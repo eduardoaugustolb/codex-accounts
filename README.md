@@ -4,7 +4,7 @@
 
 `claude --accounts` opens an arrow-key selector, swaps the active login in place, and launches Claude. Personal, work, client — one keypress apart.
 
-![selector](docs/img/selector.png)
+![selector](docs/img/selector.svg)
 
 ---
 
