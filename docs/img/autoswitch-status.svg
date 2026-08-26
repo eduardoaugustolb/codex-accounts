@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1079" height="66" viewBox="0 0 1079 66" font-family="'Cascadia Code','Cascadia Mono','JetBrains Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="15">
+  <rect width="1079" height="66" rx="10" fill="#171717"/>
+  <g fill="#d4d4d4">
+  <text x="26" y="34" xml:space="preserve"><tspan fill-opacity="0.5">claude-opus-4-8</tspan> <tspan fill-opacity="0.5">│</tspan> <tspan fill-opacity="0.5">meu-projeto</tspan> <tspan fill-opacity="0.5">│</tspan> <tspan fill="rgb(215,119,87)">██████</tspan><tspan fill-opacity="0.5">░░░░</tspan> <tspan fill-opacity="0.5">out:340.9k/549.8k · 62% · resets:1h58m</tspan> <tspan fill-opacity="0.5">│</tspan> <tspan fill="rgb(215,119,87)">ClaudeMax 96% · troca pra work no idle</tspan></text>
+  </g>
+</svg>

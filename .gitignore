@@ -4,3 +4,6 @@ node_modules/
 # distrobox test-container home that lives inside the repo dir
 home/
 *.bak-*
+
+# local dev vault (machine-specific notes)
+.claude/

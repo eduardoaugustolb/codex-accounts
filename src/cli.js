@@ -2,6 +2,7 @@
 'use strict';
 const vault = require('./vault.js');
 const { switchAccount } = require('./switch.js');
+const config = require('./config.js');
 const { t } = require('./i18n.js');
 const log = require('./log.js');
 const audit = require('./audit.js');
@@ -64,6 +65,9 @@ async function main(argv) {
     }
     case 'log': {
       return showAudit(rest);
+    }
+    case 'autoswitch': {
+      return autoswitchCmd(rest);
     }
     default:
       log.error(t('unknown', cmd || '(vazio)'));
@@ -149,7 +153,7 @@ async function runInteractiveMenu() {
     const names = vault.list();
     const current = vault.getCurrent();
     const emails = emailMap(names);
-    const choice = await runMenu(names, current, emails, { usage });
+    const choice = await runMenu(names, current, emails, { usage, autoswitch: config.autoswitch() });
     if (choice === null) { log.result(t('cancelled')); return 1; }
     if (choice === '__add__') {
       const { addAccount } = require('./login.js');
@@ -158,6 +162,10 @@ async function runInteractiveMenu() {
       if (!r.added) { log.result(addFailMessage(r)); return 1; }
       reportSwitch(switchAccount(name));
       return 0;
+    }
+    if (choice === '__autoswitch__') {
+      await configureAutoswitch(names, current);
+      continue;
     }
     if (choice === '__remove__') {
       if (!names.length) { log.result(t('nothingToRemove')); continue; }
@@ -175,6 +183,83 @@ async function runInteractiveMenu() {
     reportSwitch(switchAccount(choice));
     return 0;
   }
+}
+
+// Autoswitch setup reached from the main menu: one fixed panel (primary,
+// secondary, enable) that redraws in place. Persists the choice and wires the
+// statusline + Stop hook when enabling.
+async function configureAutoswitch(names, current) {
+  const { runAutoswitchSetup } = require('./menu.js');
+  if (names.length < 2) { log.result(t('asNeedTwo')); return; }
+  const res = await runAutoswitchSetup(names, current, config.autoswitch());
+  if (!res) return; // cancelled
+  config.update((c) => ({
+    ...c,
+    autoswitch: {
+      ...config.AUTOSWITCH_DEFAULTS, ...(c.autoswitch || {}),
+      primary: res.primary, secondary: res.secondary, enabled: res.enabled,
+    },
+  }));
+  if (res.enabled) {
+    try { require('./wire.js').wire(); }
+    catch (e) { log.warn('autoswitch.wire.failed', { err: e.message }); }
+  }
+  log.result(res.enabled ? t('asOnMsg', res.primary, res.secondary) : t('asOffMsg'));
+}
+
+// Non-interactive control: `autoswitch [status|wire|unwire|on|off]`.
+function autoswitchCmd(rest) {
+  const wire = require('./wire.js');
+  const sub = rest[0] || 'status';
+  if (sub === 'wire') {
+    const r = wire.wire();
+    log.result(`statusline wired: ${r.statusline}`);
+    if (r.wrapped) log.result(`wrapping: ${r.wrapped}`);
+    return 0;
+  }
+  if (sub === 'unwire') {
+    const r = wire.unwire();
+    log.result(r.restored ? `restored: ${r.restored}` : 'unwired');
+    return 0;
+  }
+  if (sub === 'set') {
+    const [primary, secondary] = rest.slice(1);
+    const names = vault.list();
+    if (!primary || !secondary) { log.result('usage: autoswitch set <primary> <secondary> [on]'); return 2; }
+    if (!names.includes(primary)) { log.result(t('unknownVault', primary)); return 1; }
+    if (!names.includes(secondary)) { log.result(t('unknownVault', secondary)); return 1; }
+    if (primary === secondary) { log.result('primary and secondary must differ'); return 2; }
+    const enable = rest.includes('on');
+    config.update((c) => ({
+      ...c,
+      autoswitch: {
+        ...config.AUTOSWITCH_DEFAULTS, ...(c.autoswitch || {}),
+        primary, secondary,
+        enabled: enable ? true : !!(c.autoswitch && c.autoswitch.enabled),
+      },
+    }));
+    if (enable) { try { wire.wire(); } catch (e) { log.warn('autoswitch.wire.failed', { err: e.message }); } }
+    const a = config.autoswitch();
+    log.result(a.enabled ? t('asOnMsg', a.primary, a.secondary) : t('asStatus', a.primary, a.secondary, false));
+    return 0;
+  }
+  if (sub === 'on' || sub === 'off') {
+    config.update((c) => ({
+      ...c,
+      autoswitch: { ...config.AUTOSWITCH_DEFAULTS, ...(c.autoswitch || {}), enabled: sub === 'on' },
+    }));
+    if (sub === 'on') { try { wire.wire(); } catch (e) { log.warn('autoswitch.wire.failed', { err: e.message }); } }
+    const a = config.autoswitch();
+    log.result(a.enabled ? t('asOnMsg', a.primary, a.secondary) : t('asOffMsg'));
+    return 0;
+  }
+  const a = config.autoswitch();
+  const w = wire.status();
+  log.result(t('asStatus', a.primary, a.secondary, a.enabled));
+  log.result(`statusline: ${w.statuslineWired ? 'wired' : 'no'}   stop-hook: ${w.stopHookWired ? 'wired' : 'no'}`);
+  const st = require('./autoswitch.js').readState();
+  if (st && st.phase) log.result(`state: ${st.phase}${st.note ? '  ' + st.note : ''}`);
+  return 0;
 }
 
 const cliArgv = log.stripFlags(process.argv.slice(2));

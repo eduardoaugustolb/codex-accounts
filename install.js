@@ -12,7 +12,8 @@ const RAW = 'https://raw.githubusercontent.com/SrDarf/claude-accounts/main';
 const CORE_FILES = [
   'src/core-files.js', 'src/paths.js', 'src/fsutil.js', 'src/log.js', 'src/audit.js',
   'src/lock.js', 'src/i18n.js', 'src/vault.js', 'src/switch.js', 'src/login.js',
-  'src/claude-path.js', 'src/menu.js', 'src/usage.js', 'src/doctor.js', 'src/cli.js',
+  'src/claude-path.js', 'src/menu.js', 'src/usage.js', 'src/config.js', 'src/autoswitch.js',
+  'src/statusline.js', 'src/hook-stop.js', 'src/wire.js', 'src/doctor.js', 'src/cli.js',
 ];
 const WRAPPER_FILES = [
   'wrappers/claude.cmd', 'wrappers/claude.ps1.tmpl', 'wrappers/claude.sh.tmpl',
@@ -68,6 +69,28 @@ const MSG = {
     installing: 'instalando wrappers de shell...',
     installed: 'wrappers instalados',
     ready: (cmd) => `pronto! abra um shell novo e rode ${cmd}`,
+  },
+};
+
+// Autoswitch setup prompts (installer-local; the runtime i18n is fetched later).
+const ASMSG = {
+  en: {
+    ask: 'Set up autoswitch now? (fall back to a second account when the first runs out)',
+    yes: 'Yes, set it up',
+    no: 'Not now',
+    primary: 'Primary account (used first)',
+    secondary: 'Secondary account (fallback)',
+    done: (p, s) => `autoswitch on: ${p} -> ${s}  (change it any time in claude --accounts)`,
+    skipped: 'autoswitch left off (enable later in claude --accounts)',
+  },
+  pt: {
+    ask: 'Configurar autoswitch agora? (cai numa segunda conta quando a primeira esgota)',
+    yes: 'Sim, configurar',
+    no: 'Agora nao',
+    primary: 'Conta principal (usada primeiro)',
+    secondary: 'Conta secundaria (reserva)',
+    done: (p, s) => `autoswitch ligado: ${p} -> ${s}  (muda quando quiser em claude --accounts)`,
+    skipped: 'autoswitch deixado desligado (ligue depois em claude --accounts)',
   },
 };
 
@@ -155,7 +178,12 @@ async function chooseLang() {
 
 function writeConfig(lang) {
   fs.mkdirSync(CORE_DIR, { recursive: true });
-  fs.writeFileSync(path.join(CORE_DIR, 'config.json'), JSON.stringify({ lang }, null, 2));
+  // Merge, never overwrite: a re-install must preserve an existing autoswitch
+  // block and wrappedStatusline, only refreshing the chosen language.
+  const file = path.join(CORE_DIR, 'config.json');
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(file, 'utf8')) || {}; } catch { cur = {}; }
+  fs.writeFileSync(file, JSON.stringify({ ...cur, lang }, null, 2));
 }
 
 function upsertBlock(content, block, start, end) {
@@ -287,8 +315,47 @@ async function main() {
     installUnix(real);
   }
   done(M.installed);
+  await maybeSetupAutoswitch(lang);
   const readyMsg = M.ready(C.accent('claude --accounts'));
   console.log(`\n  ${C.green('✓')} ${C.bold(readyMsg)}\n`);
+}
+
+// Optional interactive autoswitch setup during install. Only runs on a real TTY
+// (a piped install skips it) and only when there are at least two accounts to
+// switch between. Everything here is re-configurable later via claude --accounts,
+// so esc/cancel just leaves it off.
+async function maybeSetupAutoswitch(lang) {
+  if (!process.stdin.isTTY) return;
+  let vault, config, wire;
+  try {
+    vault = require(path.join(CORE_DIR, 'src', 'vault.js'));
+    config = require(path.join(CORE_DIR, 'src', 'config.js'));
+    wire = require(path.join(CORE_DIR, 'src', 'wire.js'));
+  } catch { return; }
+  let names = [];
+  try { names = vault.list(); } catch { return; }
+  if (names.length < 2) return;
+
+  const A = ASMSG[lang] || ASMSG.en;
+  const want = await selectTTY(A.ask, [
+    { label: A.no, value: false },
+    { label: A.yes, value: true },
+  ]);
+  if (!want) { step(C.dim(A.skipped)); return; }
+
+  const primary = await selectTTY(A.primary, names.map((n) => ({ label: n, value: n })));
+  const rest = names.filter((n) => n !== primary);
+  const secondary = await selectTTY(A.secondary, rest.map((n) => ({ label: n, value: n })));
+
+  config.update((c) => ({
+    ...c,
+    autoswitch: {
+      ...config.AUTOSWITCH_DEFAULTS, ...(c.autoswitch || {}),
+      primary, secondary, enabled: true,
+    },
+  }));
+  try { wire.wire(); } catch (e) { console.error(`  wire skipped: ${e.message}`); }
+  done(A.done(primary, secondary));
 }
 
 if (require.main === module) {

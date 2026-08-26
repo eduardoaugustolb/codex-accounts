@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="524" height="308" viewBox="0 0 524 308" font-family="'Cascadia Code','Cascadia Mono','JetBrains Mono',Consolas,'DejaVu Sans Mono',monospace" font-size="15">
+  <rect width="524" height="308" rx="10" fill="#171717"/>
+  <g fill="#d4d4d4">
+  <text x="26" y="34" xml:space="preserve"></text>
+  <text x="26" y="56" xml:space="preserve">  <tspan fill="rgb(215,119,87)" font-weight="700">Claude Accounts</tspan></text>
+  <text x="26" y="78" xml:space="preserve"></text>
+  <text x="26" y="100" xml:space="preserve">  <tspan fill="rgb(215,119,87)">❯</tspan> <tspan fill="rgb(215,119,87)" font-weight="700">ClaudeMax</tspan>  <tspan fill-opacity="0.5">leo@example.com   </tspan>   <tspan fill="rgb(215,119,87)">principal</tspan>           </text>
+  <text x="26" y="122" xml:space="preserve">    personal   <tspan fill-opacity="0.5">gaby@example.com  </tspan>                       </text>
+  <text x="26" y="144" xml:space="preserve">    work       <tspan fill-opacity="0.5">marcos@example.com</tspan>   <tspan fill="rgb(215,119,87)">secundaria</tspan>   <tspan fill="rgb(215,119,87)">● ativa</tspan></text>
+  <text x="26" y="166" xml:space="preserve"></text>
+  <text x="26" y="188" xml:space="preserve">    <tspan fill-opacity="0.5">autoswitch  ligado</tspan></text>
+  <text x="26" y="210" xml:space="preserve">    <tspan fill-opacity="0.5">+ adicionar conta</tspan></text>
+  <text x="26" y="232" xml:space="preserve">    <tspan fill-opacity="0.5">- remover conta</tspan></text>
+  <text x="26" y="254" xml:space="preserve"></text>
+  <text x="26" y="276" xml:space="preserve">  <tspan fill-opacity="0.5">↑/↓ navegar · enter trocar · esc sair</tspan></text>
+  </g>
+</svg>

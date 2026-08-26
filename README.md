@@ -92,6 +92,49 @@ No tokens are ever typed or pasted by hand.
 
 Remove one with **`- remover conta`**.
 
+## Autoswitch
+
+Stay on your **primary** account until its rate limit runs out, fall back to a
+**secondary** one automatically, and switch back once the primary recovers. The
+already-running Claude picks up the swapped login in place — at worst one API
+error on the request that was in flight.
+
+![the selector with primary/secondary indicators and autoswitch state](docs/img/autoswitch-menu.svg)
+
+Set it up from the selector: arrow to **`autoswitch`**, choose the primary and
+secondary accounts, and turn it on. It's a single panel that updates in place —
+no stacked prompts. (Fresh installs prompt for this too, once you have two
+accounts.)
+
+![autoswitch setup panel](docs/img/autoswitch-setup.svg)
+
+Once on, the state rides on the **far right of your status line**, alongside
+whatever usage bar you already run — it *wraps* your existing statusline, so
+XClaudeUsage and the like keep working untouched:
+
+![statusline note on the right](docs/img/autoswitch-status.svg)
+
+**How the switch times itself:**
+
+- At **95%** on the primary it arms and warns; the swap happens the moment Claude
+  goes idle (between turns), so it never lands mid-response.
+- At **99%** it switches live, even mid-turn.
+- On the secondary it polls the primary and, once that window drops back below
+  **50%**, switches back at the next idle.
+
+Thresholds live in `~/.claude-accounts/config.json` under `autoswitch`
+(`armAt` / `forceAt` / `recoverBelow`). Enabling wires a small composer into your
+Claude Code `statusLine` plus a `Stop` hook; it captures and replays your
+previous statusline, and `claude --accounts autoswitch unwire` restores it.
+
+Prefer the command line? Skip the menu:
+
+```
+claude --accounts autoswitch set <primary> <secondary> on
+claude --accounts autoswitch status
+claude --accounts autoswitch off
+```
+
 ## How switching stays safe
 
 - **Save-before-load:** the live login is written back to its slot *before* the target is loaded, so tokens that Claude refreshed during your session are never lost.

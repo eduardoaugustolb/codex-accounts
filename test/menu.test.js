@@ -1,10 +1,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { buildItems, reduceKey, renderLines, runMenu, confirm } = require('../src/menu.js');
+const {
+  buildItems, reduceKey, renderLines, runMenu, confirm,
+  reduceAutoswitchSetup, autoswitchSetupInit,
+} = require('../src/menu.js');
+const { t } = require('../src/i18n.js');
 
-test('buildItems lists accounts then add/remove actions', () => {
+test('buildItems lists accounts then autoswitch/add/remove actions', () => {
   const items = buildItems(['work', 'home'], 'work');
-  assert.deepStrictEqual(items.map((i) => i.value), ['work', 'home', '__add__', '__remove__']);
+  assert.deepStrictEqual(items.map((i) => i.value), ['work', 'home', '__autoswitch__', '__add__', '__remove__']);
   assert.strictEqual(items[0].current, true);
   assert.strictEqual(items[1].current, false);
 });
@@ -61,6 +65,49 @@ test('renderLines shows title, email, active tag and pointer', () => {
   assert.match(out, /w@x\.com/);
   assert.match(out, /●/); // active marker, language-independent
   assert.match(out, /❯/);
+});
+
+test('autoswitchSetupInit seeds from config and keeps secondary != primary', () => {
+  const s = autoswitchSetupInit(['a', 'b', 'c'], 'b', { primary: 'a', secondary: 'a', enabled: true });
+  assert.strictEqual(s.primary, 'a');
+  assert.notStrictEqual(s.secondary, 'a');
+  assert.strictEqual(s.step, 0);
+});
+
+test('reduceAutoswitchSetup cycling primary re-validates secondary', () => {
+  let s = { step: 0, primary: 'a', secondary: 'b', enabled: true };
+  s = reduceAutoswitchSetup(s, 'down', ['a', 'b', 'c']); // primary a -> b
+  assert.strictEqual(s.primary, 'b');
+  assert.notStrictEqual(s.secondary, 'b'); // secondary must move off the new primary
+});
+
+test('reduceAutoswitchSetup: enter advances then confirms; esc steps back then cancels', () => {
+  const names = ['a', 'b', 'c'];
+  let s = { step: 0, primary: 'a', secondary: 'b', enabled: true };
+  s = reduceAutoswitchSetup(s, 'enter', names);
+  assert.strictEqual(s.step, 1);
+  s = reduceAutoswitchSetup(s, 'escape', names);
+  assert.strictEqual(s.step, 0);
+  s = reduceAutoswitchSetup(s, 'escape', names); // cancel on the first field
+  assert.strictEqual(s.finished, true);
+  assert.strictEqual(s.result, null);
+});
+
+test('reduceAutoswitchSetup: toggling enable and confirming returns the pair', () => {
+  const names = ['a', 'b'];
+  let s = { step: 2, primary: 'a', secondary: 'b', enabled: true };
+  s = reduceAutoswitchSetup(s, 'down', names); // toggle enable off
+  assert.strictEqual(s.enabled, false);
+  s = reduceAutoswitchSetup(s, 'enter', names);
+  assert.deepStrictEqual(s.result, { primary: 'a', secondary: 'b', enabled: false });
+});
+
+test('renderLines shows primary/secondary role tags and the autoswitch state', () => {
+  const items = buildItems(['work', 'home'], 'work', { work: 'w@x.com', home: 'h@x.com' });
+  const out = renderLines(items, 0, { autoswitch: { primary: 'home', secondary: 'work', enabled: true } }).join('\n');
+  assert.match(out, new RegExp(t('asRolePrimary')));
+  assert.match(out, new RegExp(t('asRoleSecondary')));
+  assert.match(out, new RegExp(`autoswitch  ${t('asOn')}`));
 });
 
 test('reduceKey moves selection and wraps', () => {
