@@ -39,3 +39,7 @@ In Cloudflare's DNS page for `eduardoaugusto.work`, configure this record:
 | CNAME | `codex-accounts` | `eduardoaugustolb.github.io` | DNS only |
 
 Use automatic TTL. The CNAME target excludes the repository name. Preserve all unrelated DNS records. After GitHub validates DNS and provisions its certificate, enable **Enforce HTTPS** in Pages settings. `public/CNAME` is included in the generated static output; the GitHub Pages domain setting remains authoritative for Actions deployments.
+
+## Icons
+
+Interface icons use the regular-weight SVG assets from `@phosphor-icons/core` (MIT), rendered inline through `src/components/Icon.astro`. Import only the icons the interface uses; no icon font or external CDN is required. Decorative SVGs are hidden from assistive technology, and icon-only controls keep accessible labels.

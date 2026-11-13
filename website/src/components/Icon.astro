@@ -1,0 +1,15 @@
+---
+import icon0 from '@phosphor-icons/core/assets/regular/code.svg?raw';
+import icon1 from '@phosphor-icons/core/assets/regular/magnifying-glass.svg?raw';
+import icon2 from '@phosphor-icons/core/assets/regular/arrow-up-right.svg?raw';
+import icon3 from '@phosphor-icons/core/assets/regular/sun.svg?raw';
+import icon4 from '@phosphor-icons/core/assets/regular/moon.svg?raw';
+import icon5 from '@phosphor-icons/core/assets/regular/list.svg?raw';
+import icon6 from '@phosphor-icons/core/assets/regular/x.svg?raw';
+import icon7 from '@phosphor-icons/core/assets/regular/arrow-right.svg?raw';
+import icon8 from '@phosphor-icons/core/assets/regular/copy.svg?raw';
+const icons = { 'code': icon0, 'magnifying-glass': icon1, 'arrow-up-right': icon2, 'sun': icon3, 'moon': icon4, 'list': icon5, 'x': icon6, 'arrow-right': icon7, 'copy': icon8 };
+interface Props { name: keyof typeof icons; size?: number; class?: string; }
+const { name, size = 18, class: className } = Astro.props;
+---
+<span class:list={['ph-icon', className]} style={`--icon-size: ${size}px`} aria-hidden="true" set:html={icons[name]} />
