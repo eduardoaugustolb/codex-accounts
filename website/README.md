@@ -43,3 +43,7 @@ Use automatic TTL. The CNAME target excludes the repository name. Preserve all u
 ## Icons
 
 Interface icons use the regular-weight SVG assets from `@phosphor-icons/core` (MIT), rendered inline through `src/components/Icon.astro`. Import only the icons the interface uses; no icon font or external CDN is required. Decorative SVGs are hidden from assistive technology, and icon-only controls keep accessible labels.
+
+## Brand asset
+
+`public/brand/codex-accounts-logo.png` is the generated Codex Accounts logo used in the documentation header, PNG favicon, and Apple touch icon. The header adapts it to the light theme through CSS. The original concept is retained alongside the selected asset.

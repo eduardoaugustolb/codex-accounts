@@ -2,3 +2,5 @@
 
 /* Phosphor SVGs inherit the active documentation theme. */
 .ph-icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:var(--icon-size,18px);height:var(--icon-size,18px);vertical-align:middle;line-height:1}.ph-icon svg{display:block;width:100%;height:100%;fill:currentColor}.theme,.menu{align-items:center;justify-content:center}.theme{display:inline-flex}.theme-moon,.menu-close{display:none}html[data-theme=light] .theme-sun{display:none}html[data-theme=light] .theme-moon{display:inline-flex}.nav-open .menu-open{display:none}.nav-open .menu-close{display:inline-flex}#copy-page,footer a{display:inline-flex;align-items:center;gap:6px}.copy-code.ph-icon{box-sizing:content-box;width:16px;height:16px}.copy-code.ph-icon:has(svg){padding:5px}.copy-code.ph-icon:not(:has(svg)){width:auto}@media(max-width:760px){.menu{display:inline-flex}.search-trigger>.ph-icon{display:inline-flex}}
+
+.brand-logo{display:block;flex-shrink:0;object-fit:contain}html[data-theme=light] .brand-logo{filter:brightness(0)}

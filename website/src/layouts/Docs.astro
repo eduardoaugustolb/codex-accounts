@@ -15,14 +15,15 @@ const next = pages[index + 1];
   <meta name="description" content={frontmatter.description} />
   <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
   <title>{frontmatter.title} · Codex Accounts</title>
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="icon" href="/brand/codex-accounts-logo.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/brand/codex-accounts-logo.png" />
   <script is:inline>try { document.documentElement.dataset.theme = localStorage.getItem('docs-theme') || 'dark'; } catch {}</script>
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
 <header>
   <div class="topbar">
-    <a class="brand" href="/" aria-label="Codex Accounts home"><Icon name="code" size={28} /><span>Codex Accounts</span></a>
+    <a class="brand" href="/" aria-label="Codex Accounts home"><img class="brand-logo" src="/brand/codex-accounts-logo.png" width="32" height="32" alt="" /><span>Codex Accounts</span></a>
     <nav class="primary" aria-label="Main navigation"><a href="/">Home</a><a class="selected" href="/" aria-current="page">Docs</a><a href="/cli/">CLI reference</a><a href="/architecture/">Developers</a></nav>
     <div class="tools"><button class="search-trigger" aria-label="Search documentation"><Icon name="magnifying-glass" /> <span>Search documentation</span><kbd>⌘ K</kbd></button><a class="github" href="https://github.com/eduardoaugustolb/codex-accounts">GitHub <Icon name="arrow-up-right" size={15} /></a><button class="theme" aria-label="Toggle color theme"><Icon name="sun" class="theme-sun" size={20} /><Icon name="moon" class="theme-moon" size={20} /></button><button class="menu" aria-label="Toggle navigation" aria-expanded="false"><Icon name="list" class="menu-open" size={22} /><Icon name="x" class="menu-close" size={22} /></button></div>
   </div>
