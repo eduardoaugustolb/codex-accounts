@@ -1,3 +1,4 @@
+import { hostedPanelOrigin, hostedPanelCors, hostedPanelUrl } from "./hosted-panel";
 import { loadedThreadIds, readThread } from "./codex-session";
 import { atomicJson, ContinuationClaims, BackendLifecycle, OperationCoordinator, BackendDiagnostics } from "./backend-state";
 import { commitLogin } from "./auth-transition";
@@ -334,7 +335,7 @@ export async function serveNative() {
   function openPanel() {
     if (process.env.CODEX_ACCOUNTS_NO_BROWSER === "1") return;
     const opener = process.platform === "darwin" ? "open" : "xdg-open";
-    try { const p = Bun.spawn([opener, panelUrl], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); p.unref(); } catch {}
+    try { const p = Bun.spawn([opener, hostedPanelUrl(panelUrl)], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); p.unref(); } catch {}
   }
   async function panel() {
     const names = await store.names();
@@ -360,8 +361,14 @@ export async function serveNative() {
       const url = new URL(req.url);
       // Keep the origin on same-origin form POSTs; no-referrer can produce
       // Origin: null, which our origin guard correctly rejects.
-      const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
+      const headers = { ...hostedPanelCors(req), "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
       if (url.hostname !== "127.0.0.1" || !url.pathname.startsWith(`/${token}/`)) return new Response("Not found", { status: 404 });
+      const requestOrigin = req.headers.get("origin");
+      if (requestOrigin && requestOrigin !== url.origin && requestOrigin !== hostedPanelOrigin) return new Response("Forbidden", { status: 403 });
+      if (req.method === "OPTIONS") {
+        if (requestOrigin !== hostedPanelOrigin) return new Response("Forbidden", { status: 403 });
+        return new Response(null, { status: 204, headers });
+      }
       if (req.method === "GET" && url.pathname === `/${token}/events`) {
         let listener: ReadableStreamDefaultController<Uint8Array>;
         const stream = new ReadableStream<Uint8Array>({
@@ -387,7 +394,7 @@ export async function serveNative() {
       }
       if (req.method === "POST") {
         const origin = req.headers.get("origin");
-        if (origin && origin !== url.origin) return new Response("Forbidden", { status: 403 });
+        if (origin && origin !== url.origin && origin !== hostedPanelOrigin) return new Response("Forbidden", { status: 403 });
         const form = await req.formData();
         if (form.get("csrf") !== csrf) return new Response("Forbidden", { status: 403 });
         try {

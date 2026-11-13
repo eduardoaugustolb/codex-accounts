@@ -1,6 +1,23 @@
 #!/usr/bin/env bun
 // @bun
 
+// src/hosted-panel.ts
+var hostedPanelOrigin = "https://ca.eduardoaugusto.work";
+function hostedPanelUrl(localUrl) {
+  return `${hostedPanelOrigin}/#connect=${encodeURIComponent(localUrl)}`;
+}
+function hostedPanelCors(request) {
+  if (request.headers.get("origin") !== hostedPanelOrigin)
+    return {};
+  return {
+    "access-control-allow-origin": hostedPanelOrigin,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "Content-Type",
+    "access-control-allow-private-network": "true",
+    vary: "Origin"
+  };
+}
+
 // src/native-cli.ts
 import { mkdir as mkdir3, rm as rm2 } from "fs/promises";
 import { join as join3, resolve as resolve3 } from "path";
@@ -542,7 +559,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     }
     console.log(endpoint.url);
     if (command === "panel" && process.env.CODEX_ACCOUNTS_NO_BROWSER !== "1") {
-      const p = Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", endpoint.url], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+      const p = Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", hostedPanelUrl(endpoint.url)], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
       await p.exited;
     }
     return;

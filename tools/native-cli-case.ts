@@ -111,6 +111,20 @@ trust_level = "trusted"
     } } });
   const tuiPid = terminal.pid;
   await waitFor(() => seen.length > 0, "first model request");
+  await waitFor(() => Bun.file(join(ipcDir, "endpoint.json")).exists(), "local panel endpoint");
+  const localPanel = (await Bun.file(join(ipcDir, "endpoint.json")).json()).url;
+  const hostedOrigin = "https://ca.eduardoaugusto.work";
+  const remoteRead = await fetch(localPanel, { headers: { origin: hostedOrigin } });
+  if (!remoteRead.ok || remoteRead.headers.get("access-control-allow-origin") !== hostedOrigin || !(await remoteRead.text()).includes('name="csrf"')) throw new Error("Hosted panel authenticated read failed");
+  const preflight = await fetch(localPanel, { method: "OPTIONS", headers: { origin: hostedOrigin, "access-control-request-method": "POST", "access-control-request-private-network": "true" } });
+  if (preflight.status !== 204 || preflight.headers.get("access-control-allow-private-network") !== "true") throw new Error("Hosted panel preflight failed");
+  const foreign = await fetch(localPanel, { headers: { origin: "https://evil.example" } });
+  if (foreign.status !== 403 || foreign.headers.has("access-control-allow-origin")) throw new Error("Untrusted origin received panel access");
+  const noCapability = await fetch(new URL("/", localPanel), { headers: { origin: hostedOrigin } });
+  if (noCapability.status !== 404 || noCapability.headers.has("access-control-allow-origin")) throw new Error("Hosted origin bypassed capability path");
+  const badForm = new FormData(); badForm.set("csrf", "invalid-fixture");
+  const badMutation = await fetch(new URL("settings", localPanel), { method: "POST", headers: { origin: hostedOrigin }, body: badForm });
+  if (badMutation.status !== 403) throw new Error("Hosted origin bypassed CSRF");
   if (resetCase) {
     await waitFor(async () => {
       const loaded = await observer!.call("thread/loaded/list");

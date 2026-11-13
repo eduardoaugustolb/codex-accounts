@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { hostedPanelUrl } from "./hosted-panel";
 import { mkdir, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { runTui, type TuiState } from "./tui";
@@ -129,7 +130,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
       console.log(body.message); return;
     }
     console.log(endpoint.url); if (command === "panel" && process.env.CODEX_ACCOUNTS_NO_BROWSER !== "1") {
-      const p = Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", endpoint.url], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); await p.exited;
+      const p = Bun.spawn([process.platform === "darwin" ? "open" : "xdg-open", hostedPanelUrl(endpoint.url)], { stdin: "ignore", stdout: "ignore", stderr: "ignore" }); await p.exited;
     }
     return;
   }

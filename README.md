@@ -207,6 +207,8 @@ See [Automatic behavior and recovery](docs/automation.md) for eligibility,
 scheduling, persistence, safety rules, and examples of interacting preferences.
 
 ## Browser panel and backend lifecycle
+The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The private local address is passed in a URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `panel` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
+
 
 ```bash
 bun run panel     # Start the backend if needed and open the panel

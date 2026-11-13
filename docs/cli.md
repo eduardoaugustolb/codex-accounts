@@ -221,3 +221,9 @@ See [Automatic behavior and recovery](automation.md) for timing and eligibility.
 Treat `status` output and panel links as private. Do not paste authentication files,
 private panel URLs, or account emails into issues. Report vulnerabilities using
 [SECURITY.md](../SECURITY.md).
+
+## Hosted browser dashboard
+
+Run `codex-accounts panel` to open the browser dashboard.
+
+The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The private local address is passed in a URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `panel` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.

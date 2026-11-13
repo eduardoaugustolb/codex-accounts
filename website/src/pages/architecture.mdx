@@ -81,3 +81,11 @@ accepted-but-timed-out login, unknown outcome, definitive rejection, failed clai
 write, corrupt claims, operation exclusion, sanitized diagnostics, shutdown drain,
 invalid daemon responses, pagination cycles, and lock release after SIGKILL.
 All account fixtures use fake identities and isolated vaults.
+
+## Hosted local-dashboard connector
+
+The static interface at `https://ca.eduardoaugusto.work` is published from [codex-accounts-proxy](https://github.com/eduardoaugustolb/codex-accounts-proxy). The browser connects directly to the user's loopback backend; the hosting service does not relay requests or store credentials. The backend continues binding to `127.0.0.1` on a random port.
+
+`codex-accounts panel` opens the hosted frontend with the private local panel URL in a fragment. The connector consumes and removes the fragment, keeps the capability in tab-scoped session storage, and reads the backend-rendered HTML through CORS. The only permitted cross-origin caller is exactly `https://ca.eduardoaugusto.work`; the capability path and form CSRF token remain required. OPTIONS supports loopback/private-network preflight, without cookie credentials or wildcard origins. The original local panel and private IPC remain available.
+
+The hosted frontend is part of the trusted application: scripts published there can operate the paired panel. Publishing access to that repository must be protected. Browser local-network permission can block the connection; the user can use the local panel directly. Restarting the backend rotates the private URL and requires pairing again. Refreshes pause when the page loses focus or while the user interacts with a form.

@@ -1,4 +1,21 @@
 // @bun
+// src/hosted-panel.ts
+var hostedPanelOrigin = "https://ca.eduardoaugusto.work";
+function hostedPanelUrl(localUrl) {
+  return `${hostedPanelOrigin}/#connect=${encodeURIComponent(localUrl)}`;
+}
+function hostedPanelCors(request) {
+  if (request.headers.get("origin") !== hostedPanelOrigin)
+    return {};
+  return {
+    "access-control-allow-origin": hostedPanelOrigin,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "Content-Type",
+    "access-control-allow-private-network": "true",
+    vary: "Origin"
+  };
+}
+
 // src/codex-session.ts
 function object(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -1142,7 +1159,7 @@ async function serveNative() {
       return;
     const opener = process.platform === "darwin" ? "open" : "xdg-open";
     try {
-      const p = Bun.spawn([opener, panelUrl], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+      const p = Bun.spawn([opener, hostedPanelUrl(panelUrl)], { stdin: "ignore", stdout: "ignore", stderr: "ignore" });
       p.unref();
     } catch {}
   }
@@ -1177,9 +1194,17 @@ async function serveNative() {
       return new Response("Shutting down", { status: 503 });
     return lifecycle.run(async () => {
       const url = new URL(req.url);
-      const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
+      const headers = { ...hostedPanelCors(req), "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
       if (url.hostname !== "127.0.0.1" || !url.pathname.startsWith(`/${token}/`))
         return new Response("Not found", { status: 404 });
+      const requestOrigin = req.headers.get("origin");
+      if (requestOrigin && requestOrigin !== url.origin && requestOrigin !== hostedPanelOrigin)
+        return new Response("Forbidden", { status: 403 });
+      if (req.method === "OPTIONS") {
+        if (requestOrigin !== hostedPanelOrigin)
+          return new Response("Forbidden", { status: 403 });
+        return new Response(null, { status: 204, headers });
+      }
       if (req.method === "GET" && url.pathname === `/${token}/events`) {
         let listener;
         const stream = new ReadableStream({
@@ -1222,7 +1247,7 @@ async function serveNative() {
       }
       if (req.method === "POST") {
         const origin = req.headers.get("origin");
-        if (origin && origin !== url.origin)
+        if (origin && origin !== url.origin && origin !== hostedPanelOrigin)
           return new Response("Forbidden", { status: 403 });
         const form = await req.formData();
         if (form.get("csrf") !== csrf)
