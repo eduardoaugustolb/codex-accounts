@@ -27,7 +27,10 @@
     "usage": "bun src/native-cli.ts usage",
     "switch": "bun src/native-cli.ts switch",
     "resume-after-reset": "bun src/native-cli.ts resume-after-reset",
-    "tui": "bun src/native-cli.ts tui"
+    "tui": "bun src/native-cli.ts tui",
+    "docs:dev": "bun run --cwd website dev",
+    "docs:build": "bun run --cwd website build",
+    "docs:preview": "bun run --cwd website preview"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",

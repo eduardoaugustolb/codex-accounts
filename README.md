@@ -259,3 +259,17 @@ Sources: [Hooks](https://learn.chatgpt.com/docs/hooks), [App Server](https://dev
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and [SECURITY.md](SECURITY.md) for private vulnerability reports. Licensed under [MIT](LICENSE). This is an independent project, not an official OpenAI product.
 
 Backend responsibilities, failure handling, and remaining limitations are documented in [Architecture](docs/architecture.md). See [backend hardening validation](docs/validation-2026-11-13.md) for the latest verification results and the observed intermittent weekly-reset test failure.
+
+## Documentation website
+
+The MDX documentation lives in `website/` and uses Astro.
+
+```bash
+bun install --cwd website --frozen-lockfile
+bun run docs:dev
+# Build the static site:
+bun run docs:build
+```
+
+Open `http://localhost:4321`. The static output is written to `website/dist/`.
+See [website/README.md](website/README.md) for editing and validation details.

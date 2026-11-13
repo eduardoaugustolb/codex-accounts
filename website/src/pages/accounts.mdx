@@ -1,0 +1,47 @@
+---
+layout: ../layouts/Docs.astro
+title: "Adding accounts"
+description: "Keep your personal and work accounts within reach."
+---
+
+## Adding accounts
+
+Save the current file-based ChatGPT login:
+
+```bash
+bun run start capture personal
+```
+
+Add another account through the official login flow in an isolated temporary directory:
+
+```bash
+bun run start add work
+# Alternatively, use a device code:
+bun run start add secondary --device
+bun run start list
+```
+
+Adding an account does not switch the current session. Select the intended account in the browser for each login. Account names accept letters, numbers, `_`, and `-`, up to 64 characters.
+
+Then open any project and run the official binary:
+
+```bash
+codex
+```
+
+## Account details and removal
+
+The panel displays a profile picture when one is available in the login data. Because App Server does not provide a profile picture endpoint, the panel also lets you upload a local PNG, JPEG, or WebP image up to 2 MB. The local image is deleted when you remove the account.
+
+Each account's usage refresh action calls the official `account/rateLimits/read` RPC without switching the shared session. The panel displays the **five-hour** and **weekly** windows, remaining percentages, reset times in Brasilia time, and the last refresh time. Missing windows and failed requests appear as unavailable. Values remain in memory until the next refresh or backend restart. These are the account's Codex limits reported by the service, not general ChatGPT limits.
+
+To remove an individual saved account:
+
+```bash
+bun run remove secondary
+# Equivalent:
+bun run start remove secondary
+```
+
+In the panel, expand the account's removal action and confirm it. This deletes that account's local credentials; add the account again to use it later. The active account is protected: sign out or switch to another account before removing it. Other accounts and conversation history are preserved.
+

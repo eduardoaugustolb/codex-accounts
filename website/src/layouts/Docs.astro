@@ -1,0 +1,69 @@
+---
+import '../styles/docs.css';
+import { pages } from '../navigation';
+const { frontmatter } = Astro.props;
+const current = Astro.url.pathname;
+const index = pages.findIndex(p => p.href === current);
+const next = pages[index + 1];
+---
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content={frontmatter.description} />
+  <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site)} />
+  <title>{frontmatter.title} · Codex Accounts</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <script is:inline>try { document.documentElement.dataset.theme = localStorage.getItem('docs-theme') || 'dark'; } catch {}</script>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+<header>
+  <div class="topbar">
+    <a class="brand" href="/" aria-label="Codex Accounts home"><svg width="28" height="28" viewBox="0 0 28 28" fill="none" aria-hidden="true"><path d="m10 7-7 7 7 7M18 7l7 7-7 7M16 4l-4 20" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Codex Accounts</span></a>
+    <nav class="primary" aria-label="Main navigation"><a href="/">Home</a><a class="selected" href="/" aria-current="page">Docs</a><a href="/cli/">CLI reference</a><a href="/architecture/">Developers</a></nav>
+    <div class="tools"><button class="search-trigger" aria-label="Search documentation"><span>⌕</span> <span>Search documentation</span><kbd>⌘ K</kbd></button><a class="github" href="https://github.com/eduardoaugustolb/codex-accounts">GitHub <span aria-hidden="true">↗</span></a><button class="theme" aria-label="Toggle color theme">☾</button><button class="menu" aria-label="Toggle navigation" aria-expanded="false">☰</button></div>
+  </div>
+  <nav class="secondary" aria-label="Documentation categories"><a class:list={{active: index < 3}} href="/">Overview</a><a class:list={{active: index === 3}} href="/cli/">Interfaces</a><a class:list={{active: index === 4}} href="/automation/">Automation</a><a class:list={{active: index === 5}} href="/architecture/">Developers</a><a class:list={{active: index === 6}} href="/security/">Security</a></nav>
+</header>
+<div class="layout">
+  <aside class="sidebar" aria-label="Documentation navigation">
+    <a class="side-home" href="/">Documentation</a>
+    {['Get started','Guides','Developers'].map(group => <div class="nav-group"><h2>{group}</h2>{pages.filter(p => p.group === group).map(p => <a href={p.href} class:list={{active: current === p.href}} aria-current={current === p.href ? 'page' : undefined}>{p.title}</a>)}</div>)}
+    <div class="sidebar-foot"><span class="status-dot"></span> v0.2.0 <span>Experimental</span><a href="https://github.com/eduardoaugustolb/codex-accounts/issues">Feedback <span>↗</span></a></div>
+  </aside>
+  <main id="content">
+    <div class="page-heading"><h1>{frontmatter.title}</h1><p>{frontmatter.description}</p></div>
+    <article><slot /></article>
+    {next && <a class="next-page" href={next.href}><span>Up next<strong>{next.title}</strong></span><span aria-hidden="true">→</span></a>}
+    <footer><span>Codex Accounts documentation</span><a href={`https://github.com/eduardoaugustolb/codex-accounts/tree/main/website/src/pages`}>Edit on GitHub ↗</a></footer>
+  </main>
+  <aside class="toc" aria-label="On this page"><nav id="toc-links"></nav><button id="copy-page">▢ &nbsp; Copy page</button><span id="copy-status" role="status"></span></aside>
+</div>
+<dialog id="search-dialog" aria-label="Search documentation"><div class="search-head"><span aria-hidden="true">⌕</span><input id="search-input" type="search" placeholder="Search documentation…" aria-label="Search documentation" /><button id="close-search" aria-label="Close search">Esc</button></div><div id="search-results"></div><p class="search-hint">Search pages and topics · Enter to open the first result</p></dialog>
+<script>
+import { pages } from '../navigation';
+const $ = (selector: string) => document.querySelector<HTMLElement>(selector)!;
+$('.theme').addEventListener('click', () => { const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = theme; try { localStorage.setItem('docs-theme', theme); } catch {} });
+$('.menu').addEventListener('click', () => { const open = document.body.classList.toggle('nav-open'); $('.menu').setAttribute('aria-expanded', String(open)); });
+const headings = [...document.querySelectorAll<HTMLElement>('article h2')];
+headings.forEach(heading => { const a = document.createElement('a'); a.href = `#${heading.id}`; a.textContent = heading.textContent; $('#toc-links').append(a); });
+const observer = new IntersectionObserver(entries => { for (const entry of entries) if (entry.isIntersecting) { document.querySelectorAll('#toc-links a').forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${entry.target.id}`)); } }, { rootMargin: '-10% 0px -65% 0px' });
+headings.forEach(h => observer.observe(h));
+$('#toc-links a')?.classList.add('active');
+$('#copy-page').addEventListener('click', async () => { try { await navigator.clipboard.writeText(`${$('h1').textContent}\n\n${$('article').innerText}`); $('#copy-status').textContent = 'Page copied'; } catch { $('#copy-status').textContent = 'Clipboard unavailable'; } });
+document.querySelectorAll('pre').forEach(pre => { const button = document.createElement('button'); button.className = 'copy-code'; button.textContent = '▢'; button.setAttribute('aria-label', 'Copy code'); button.addEventListener('click', async () => { try { await navigator.clipboard.writeText(pre.querySelector('code')!.textContent!); button.textContent = 'Copied'; } catch { button.textContent = 'Unavailable'; } }); pre.append(button); });
+const dialog = $('#search-dialog') as HTMLDialogElement;
+const input = $('#search-input') as HTMLInputElement;
+function search() { const query = input.value.trim().toLowerCase(); const matches = pages.filter(p => `${p.title} ${p.description} ${p.group}`.toLowerCase().includes(query)); const container = $('#search-results'); container.replaceChildren(); for (const p of matches) { const a = document.createElement('a'); a.href = p.href; const title = document.createElement('strong'); title.textContent = p.title; const description = document.createElement('span'); description.textContent = p.description; a.append(title, description); container.append(a); } if (!matches.length) container.textContent = 'No pages found. Try “accounts”, “CLI”, or “switching”.'; }
+function openSearch() { dialog.showModal(); search(); input.focus(); }
+$('.search-trigger').addEventListener('click', openSearch);
+$('#close-search').addEventListener('click', () => dialog.close());
+input.addEventListener('input', search);
+input.addEventListener('keydown', e => { if (e.key === 'Enter') document.querySelector<HTMLAnchorElement>('#search-results a')?.click(); });
+document.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); dialog.open ? dialog.close() : openSearch(); } });
+dialog.addEventListener('click', e => { if (e.target === dialog) { const r = dialog.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dialog.close(); } });
+</script>
+</body>
+</html>

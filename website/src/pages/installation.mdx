@@ -1,0 +1,67 @@
+---
+layout: ../layouts/Docs.astro
+title: "Installation"
+description: "Set up Codex Accounts with the official Codex CLI."
+---
+
+## Requirements
+
+Tested requirements: Linux, Bun 1.4.4, and Codex CLI 0.167.2. Authentication uses an experimental RPC; other versions require verification. Browser launching is implemented for macOS but has not been tested. Windows is not supported by this prototype.
+
+The prototype requires file-based authentication. Set the following in `~/.codex/config.toml`:
+
+```toml
+cli_auth_credentials_store = "file"
+```
+
+If you previously used the keyring, sign in again through the official login flow in this mode before using the plugin. The installer does not change this setting or extract credentials from the keyring.
+
+From the project directory:
+
+```bash
+bun install --frozen-lockfile
+bun run setup
+```
+
+Setup builds the package into `marketplace/plugin/bin`, registers the local marketplace, installs the plugin with the official command, and starts the official daemon. It does not modify the binary or configure aliases.
+
+### Install the CLI and TUI command
+
+`bun run setup` also installs the `codex-accounts` command in `~/.local/bin`.
+To install only the CLI and TUI from the project directory, run:
+
+```bash
+bun install --frozen-lockfile
+./install.sh
+# Equivalent: bun run install:cli
+```
+
+This installs the manager command without registering the plugin or starting the
+daemon. For the complete plugin installation, use `bun run setup` above.
+
+The installer copies the built marketplace into
+`${XDG_DATA_HOME:-$HOME/.local/share}/codex-accounts/cli/releases` and creates an
+executable launcher. It works from any directory and does not depend on keeping
+this checkout in place. Bun must remain installed. Existing managed installations
+are updated; unrelated commands at the target path are never overwritten.
+Previous releases are retained so running backends can finish using them.
+
+If `~/.local/bin` is not in your `PATH`, add it through your shell configuration.
+The installer prints a POSIX-shell command for the selected directory and does
+not edit shell startup files. Custom locations are supported with
+`./install.sh --bin-dir /path/to/bin --data-dir /path/to/app-data`.
+
+```bash
+codex-accounts                    # Open the TUI in an interactive terminal
+codex-accounts tui                # Explicit TUI command
+codex-accounts --help
+codex-accounts usage work --json
+codex-accounts switch personal
+```
+
+Rerun `./install.sh` after updating the checkout, or use `bun run setup` to also
+update the plugin. The command name is a launcher for this manager; the official
+`codex` command is preserved.
+
+Open `codex`, enter `/hooks`, and review and trust **all four Codex Accounts hooks**. Then start a new conversation. Trust is tied to the plugin contents, so an update may require another review. Do not use `--dangerously-bypass-hook-trust`: this option disables daemon reuse in Codex 0.167.2.
+

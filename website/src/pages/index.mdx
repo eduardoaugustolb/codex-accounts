@@ -1,0 +1,58 @@
+---
+layout: ../layouts/Docs.astro
+title: "Overview"
+description: "Manage your accounts. Keep your conversation."
+---
+
+## Account management, in context
+
+Codex Accounts brings your ChatGPT accounts together in the **official Codex CLI**. Check remaining capacity, switch accounts, and return to the same conversation through a terminal interface or a private browser panel.
+
+Keep starting your work with `codex`. Your conversations, history, and CLI process stay in place.
+
+## Start with the essentials
+
+A small set of tools covers the everyday workflow:
+
+- **Accounts:** Save your current login or add another account through the official login flow.
+- **Usage:** Inspect remaining capacity in the five-hour and weekly windows.
+- **Switching:** Select a saved account when every connected turn is idle.
+- **Continuation:** Choose whether eligible quota-interrupted conversations resume automatically.
+
+All automatic preferences are off by default. Enable only the behavior you need.
+
+## Install the plugin
+
+From the project checkout, install dependencies and run setup:
+
+```bash
+bun install --frozen-lockfile
+bun run setup
+```
+
+Setup installs the manager command, registers the local plugin, and starts the official daemon. In Codex, open `/hooks`, review all four hooks, and start a new conversation.
+
+See [Installation](/installation/) for requirements and file-based authentication configuration.
+
+## Add your accounts
+
+Save the current login, then register another account:
+
+```bash
+bun run start capture personal
+bun run start add work
+```
+
+Adding an account does not switch your current session. Account names are local aliases; you never need to paste authentication tokens.
+
+## Choose your interface
+
+Open the terminal manager with `codex-accounts`, or run `bun run panel` for the private browser panel. Both interfaces use the same local backend.
+
+For scripts, use `codex-accounts usage --json`. Read the [CLI reference](/cli/) for commands, keyboard controls, and output formats.
+
+## Understand shared sessions
+
+Switching accounts and signing out affect **all conversations connected to the daemon**. Wait for active turns to finish before switching. A manual switch does not submit a new turn; send `continue` yourself when ready.
+
+Live authentication switching is experimental. The validated environment is Linux, Bun 1.4.4, and Codex CLI 0.167.2. This is an independent project, not an official OpenAI product.
