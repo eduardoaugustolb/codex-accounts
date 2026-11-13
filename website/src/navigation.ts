@@ -30,6 +30,12 @@ export const pages = [
     group: "Guides",
   },
   {
+    href: "/troubleshooting/",
+    title: "Troubleshooting",
+    description: "Recover from a Codex startup that never finishes.",
+    group: "Guides",
+  },
+  {
     href: "/architecture/",
     title: "Architecture",
     description: "How the local backend connects to the official daemon.",

@@ -30,6 +30,8 @@ The complete suite checks types, unit tests, build, authentication, manual switc
 
 Validated requirements: Linux, Bun 1.4.4, and Codex CLI 0.167.2. Integrations require local sockets, a pseudoterminal, and space for a temporary daemon. Use `CODEX_ACCOUNTS_CODEX` to select a binary. If setting `TMPDIR`, choose a short path with enough space. Prefer the suite for routine validation; run individual scenarios only to investigate failures.
 
+Every scenario that starts the managed App Server must stop both the daemon and its `pid-update-loop` helper. `codex app-server daemon stop` only stops the daemon, and the surviving helper keeps the deleted temporary runtime open; that leak fills the temporary filesystem and breaks the Codex startup of the user machine with `app server did not become ready`. `tools/native-cli-case.ts` handles it through `stopManagedDaemon()`, and `tools/test-suite.ts` fails the suite when a helper survives a scenario or when the temporary filesystem has less than 512 MB free. See [docs/troubleshooting.md](docs/troubleshooting.md) for the diagnosis and recovery procedure.
+
 When changing `src/`, regenerate `marketplace/plugin/bin` with `bun run build` and include updated artifacts. Do not edit bundles manually. Update the README and validation documentation when behavior or preferences change.
 
 ## Authentication and security

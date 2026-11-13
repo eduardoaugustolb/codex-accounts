@@ -261,6 +261,8 @@ One command runs thirteen stages: formatting/lint, staged-hook isolation, type c
 
 Integration scenarios open sockets and a pseudoterminal, install the plugin in a temporary `CODEX_HOME`, and stop only their own processes. They do not authenticate real accounts or call external models. They require permission to open local sockets. `KEEP_CASE=1` preserves temporary artifacts when running an individual scenario for inspection.
 
+Scenarios that start the managed App Server also stop its `pid-update-loop` helper. The suite fails when a helper survives a scenario or when the temporary filesystem has less than 512 MB free, because a leaked helper keeps a deleted temporary runtime open and eventually breaks the Codex startup with `app server did not become ready`. See [Troubleshooting](docs/troubleshooting.md) for the diagnosis, the recovery procedure, and the rationale.
+
 The native CLI scenario verifies launch through the official binary without `--remote`, quota failure, confirmation, switching in the same window and conversation, preserved context, and the absence of account manager instructions in model input. A separate diagnostic demonstrates why replacing only `auth.json` does not update authentication held in memory.
 
 Upstream attribution: the account-selector workflow is inspired by [SrDarf/claude-accounts](https://github.com/SrDarf/claude-accounts). This adaptation targets Codex; upstream targets Claude Code. Their credential reload mechanisms and integrations differ. The upstream and adaptation copyrights are retained in [LICENSE](LICENSE).

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { UnixRpc } from "../src/rpc";
@@ -157,6 +157,45 @@ async function command(args: string[]) {
   if ((await p.exited) !== 0)
     throw new Error(`Command ${args.slice(0, 3).join(" ")} failed: ${out} ${err}`);
   return out;
+}
+async function stopProcessFromPidFile(name: string) {
+  const file = join(home, "app-server-daemon", name);
+  let pid: number | undefined;
+  try {
+    pid = JSON.parse(await readFile(file, "utf8")).pid;
+  } catch {
+    return;
+  }
+  if (!pid || pid <= 1) return;
+  // Only kill a process that still belongs to this isolated case home.
+  let cmdline = "";
+  try {
+    cmdline = await readFile(`/proc/${pid}/cmdline`, "utf8");
+  } catch {
+    return;
+  }
+  if (!cmdline.includes(home)) return;
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {}
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await Bun.sleep(50);
+  }
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {}
+}
+async function stopManagedDaemon() {
+  await command(["app-server", "daemon", "stop"]).catch(() => {});
+  // "daemon stop" leaves the managed pid-update-loop running; it keeps the
+  // deleted temporary runtime open and fills the system temporary directory.
+  await stopProcessFromPidFile("daemon-updater.pid");
+  await stopProcessFromPidFile("daemon.pid");
 }
 async function waitFor(check: () => boolean | Promise<boolean>, label: string, timeout = 20000) {
   const deadline = Date.now() + timeout;
@@ -763,7 +802,7 @@ trust_level = "trusted"
       3000,
     );
   } catch {}
-  await command(["app-server", "daemon", "stop"]).catch(() => {});
+  await stopManagedDaemon();
   server.stop(true);
   if (process.env.KEEP_CASE) {
     await Bun.write(join(home, "terminal-output.txt"), output);
