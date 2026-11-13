@@ -1,4 +1,5 @@
 ---
+
 name: Bug report
 about: Report unexpected behavior using fake data
 labels: bug

@@ -1,52 +1,19 @@
 # Dynamic Codex theme inheritance
 
-Status: **required behavior; not implemented yet**. The current TUI uses generic
-ANSI bold, dim, and reverse-video styles. That does not resolve or dynamically
-follow the theme selected in Codex, and it must not be described as doing so.
+The terminal manager now resolves `tui.theme` through the official App Server's `config/read` loader for the current working directory and `CODEX_HOME`. This preserves the official configuration layering and project-trust rules instead of guessing from a single TOML file. Theme resolution uses an isolated helper and never submits model turns or reads account credentials for diagnostics.
 
-## Required behavior
+While the TUI is open, it polls the effective selection and custom theme contents every two seconds without restarting the shared backend. Definitions for all 38 Codex CLI 0.167.2 built-in themes are included as data derived from the upstream TextMate sources. Custom `.tmTheme` files are loaded from `$CODEX_HOME/themes/NAME.tmTheme`. Sources are recorded in `src/themes/sources.json`, and licenses are retained in `src/themes/ACKNOWLEDGEMENTS.md`.
 
-The terminal account manager must follow the active Codex theme dynamically.
-There must be no separate default palette or independently selected account-manager
-theme that drifts from Codex.
+## Terminal colors and syntax colors
 
-- Resolve the theme selected by Codex from `tui.theme` in the effective
-  configuration for the same `CODEX_HOME` as the managed session.
-- Reuse the selected theme's definitions, including supported built-in themes and
-  custom `.tmTheme` files. Do not hard-code one theme or a small set of lookalike
-  palettes and call that inheritance.
-- Follow changes while the manager is open. Selecting another theme with Codex's
-  `/theme` picker, or changing the selected custom theme file, must refresh the
-  manager without restarting the backend or the TUI.
-- Distinguish Codex's syntax theme from the terminal's base UI palette. Preserve
-  the terminal colors where Codex itself uses them; do not assume a syntax theme
-  replaces every UI foreground and background.
-- Apply resolved semantic colors consistently to headings, account selection,
-  quotas, secondary text, statuses, and confirmation prompts. Generic reverse
-  video and dimming alone do not satisfy this requirement.
-- If no explicit Codex theme can be resolved, use the terminal's actual defaults
-  and palette. An unsupported theme must have a visible, honest fallback rather
-  than silently claiming to match Codex.
-- Respect no-color environments, light and dark themes, and terminal color
-  capabilities. Theme handling must not modify Codex or terminal configuration.
-- Restore terminal styles, raw mode, cursor visibility, and the previous screen on
-  exit. Treat theme files as data, never executable content, and never expose
-  unrelated private configuration when reporting a theme error.
+Headings and emphasis use resolved `codex.accent`, heading, or keyword colors. Quota values and enabled preferences use semantic success/warning/failure colors derived from the theme's insertion, string, numeric, deletion, and invalid scopes. Terminal-owned backgrounds and selection remain terminal-owned; the syntax theme's background does not repaint the entire interface. With no configured theme, semantic ANSI palette colors follow the terminal's own palette rather than imposing an independent RGB theme.
 
-## Acceptance checks
+The renderer supports truecolor, 256-color, and 16-color output; recognizes upstream ANSI/default-color encodings; and honors `NO_COLOR` and `TERM=dumb`. Unavailable, invalid, or unsupported selections display an explicit fallback notice. Theme files are treated as bounded data, with no external-entity expansion or executable content. Labels and backend messages are sanitized before adding trusted styles.
 
-1. Compare the manager with Codex in the same terminal using a dark theme and a
-   light theme; verify actual resolved colors rather than only matching labels.
-2. Change the Codex theme while the manager remains open and verify that its
-   styles update without a restart.
-3. Edit a selected custom `.tmTheme` file and verify that its updated colors are
-   reflected.
-4. With terminal defaults in use, change the terminal palette and verify that the
-   manager does not impose stale RGB values or an unrelated selection fill.
-5. Exercise missing, invalid, unsupported, and no-color cases, including cleanup
-   after cancellation, errors, and external login.
+## Validation
 
-The official [CLI customization documentation](https://learn.chatgpt.com/docs/cli-customization)
-describes `/theme`, persistence in `tui.theme`, and custom themes under
-`$CODEX_HOME/themes`. The [Codex UI style implementation](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/tui/src/style.rs)
-also distinguishes terminal UI colors from syntax-theme settings.
+Unit tests verify actual upstream accent colors, custom-file edits, malformed/unsafe file rejection, no-color output, and color-depth conversion. The isolated PTY integration exercises a live theme change while the manager stays open, followed by navigation, confirmation, preference changes, error recovery, and terminal cleanup. Raw mode, cursor visibility, styles, and the alternate screen are restored on exit.
+
+Visual comparison with the user's terminal and Codex `/theme` picker remains a manual check. When updating supported Codex versions, review their theme inventory, scope behavior, and terminal-owned UI colors before refreshing the snapshot with `bun tools/sync-tui-themes.ts`.
+
+Sources: [Codex theme picker](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/tui/src/theme_picker.rs), [theme resolver](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/tui/src/render/highlight.rs), and [UI styles](https://github.com/openai/codex/blob/rust-v0.167.2/codex-rs/tui/src/style.rs).

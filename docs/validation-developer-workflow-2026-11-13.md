@@ -1,0 +1,9 @@
+# Developer workflow, reinstall, theme, and panel validation
+
+The complete suite passed all 13 stages in 94.5 seconds with `TMPDIR=/var/tmp bun run test:all`, including 36 unit tests. New stages check formatting/lint and staged-hook isolation. The isolated PTY scenario verifies theme changes while the manager stays open, strips ANSI before comparing visible text, and checks terminal restoration. Marketplace migration was exercised with the official Codex 0.167.2 binary, including a second install from the same release; fake-service tests also verify prior-source restoration on registration failure and rejection of nonlocal conflicts.
+
+The CLI now prints a compact, already-paired hosted URL from `panel`; `status` continues exposing the private local URL for diagnostics and fallback. The hosted connector accepts compact and previous fragment formats. New backends use a 128-bit random Base64URL capability (22 characters) rather than two concatenated UUIDs. The integration verifies the printed hosted origin, compact fragment, and a successful request to its reconstructed loopback endpoint. CORS, CSRF, authentication, idle-turn guards, autoswitch, and both quota-reset scenarios passed.
+
+The source tree received Biome formatting and safe lint fixes. Generated bundles are rebuilt from source and excluded from style checks. Upstream theme data and Phosphor assets are excluded and retain provenance/license files. Custom hooks are preserved by the hook installer. The pre-commit check reads Git index blobs and does not rewrite or restage the working tree; its fixture covers partially staged files in both directions.
+
+The documentation build and the hosted connector's style/browser-JavaScript checks passed. Browser visual verification and the local-network permission prompt were not exercised because the browser host is unavailable. The connector checkout now lives alongside the main repository at `../codex-accounts-proxy`.

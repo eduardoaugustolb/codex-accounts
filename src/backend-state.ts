@@ -1,4 +1,4 @@
-import { rename, open, rm } from "node:fs/promises";
+import { open, rename, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { RpcError } from "./rpc";
 
@@ -9,10 +9,16 @@ export async function atomicJson(path: string, value: unknown) {
     try {
       await file.writeFile(JSON.stringify(value));
       await file.sync();
-    } finally { await file.close(); }
+    } finally {
+      await file.close();
+    }
     await rename(temp, path);
     const directory = await open(dirname(path), "r");
-    try { await directory.sync(); } finally { await directory.close(); }
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
   } finally {
     await rm(temp, { force: true });
   }
@@ -20,22 +26,31 @@ export async function atomicJson(path: string, value: unknown) {
 
 /** Missing state is safe; unreadable or corrupt state must disable automation. */
 export class ContinuationClaims {
-  private constructor(private readonly path: string, private readonly keys: Set<string>) {}
+  private constructor(
+    private readonly path: string,
+    private readonly keys: Set<string>,
+  ) {}
 
   static async load(path: string) {
     let value: unknown;
-    try { value = await Bun.file(path).json(); }
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("Continuation claims unavailable; repair the state before enabling automation.");
+    try {
+      value = await Bun.file(path).json();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT")
+        throw new Error(
+          "Continuation claims unavailable; repair the state before enabling automation.",
+        );
       value = [];
     }
-    if (!Array.isArray(value) || !value.every(key => typeof key === "string")) {
+    if (!Array.isArray(value) || !value.every((key) => typeof key === "string")) {
       throw new Error("Invalid continuation claims; automation cannot start safely.");
     }
     return new ContinuationClaims(path, new Set(value));
   }
 
-  has(key: string) { return this.keys.has(key); }
+  has(key: string) {
+    return this.keys.has(key);
+  }
 
   async claim(key: string) {
     if (this.keys.has(key)) return;
@@ -70,24 +85,40 @@ export type AccountOperation = "quota" | "switch" | "refresh" | "remove" | "logo
 /** One local credential operation at a time; the vault lock protects other processes. */
 export class OperationCoordinator {
   private current: AccountOperation | undefined;
-  get busy() { return this.current !== undefined; }
-  get operation() { return this.current ?? null; }
+  get busy() {
+    return this.current !== undefined;
+  }
+  get operation() {
+    return this.current ?? null;
+  }
 
   begin(operation: AccountOperation) {
     if (this.current) throw new Error("Another account operation is in progress.");
     this.current = operation;
   }
 
-  end() { this.current = undefined; }
+  end() {
+    this.current = undefined;
+  }
 }
 
 export class BackendDiagnostics {
-  private readonly events: { operation: AccountOperation | "monitor" | "panel"; category: string; at: number }[] = [];
+  private readonly events: {
+    operation: AccountOperation | "monitor" | "panel";
+    category: string;
+    at: number;
+  }[] = [];
 
   record(operation: AccountOperation | "monitor" | "panel", error: unknown) {
-    this.events.push({ operation, category: error instanceof RpcError ? error.kind : "localFailure", at: Date.now() });
+    this.events.push({
+      operation,
+      category: error instanceof RpcError ? error.kind : "localFailure",
+      at: Date.now(),
+    });
     if (this.events.length > 50) this.events.shift();
   }
 
-  snapshot() { return this.events.map(event => ({ ...event })); }
+  snapshot() {
+    return this.events.map((event) => ({ ...event }));
+  }
 }

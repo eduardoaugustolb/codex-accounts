@@ -1,13 +1,13 @@
 // @bun
 // src/native-hook.ts
+import { mkdir as mkdir2, readFile, rm } from "fs/promises";
 import { join as join2 } from "path";
-import { rm, mkdir as mkdir2, readFile } from "fs/promises";
 
 // src/native-paths.ts
 import { createHash } from "crypto";
+import { chmod, lstat, mkdir } from "fs/promises";
 import { homedir, tmpdir } from "os";
 import { join, resolve } from "path";
-import { mkdir, lstat, chmod } from "fs/promises";
 var codexHome = resolve(process.env.CODEX_HOME ?? join(homedir(), ".codex"));
 var binary = process.env.CODEX_ACCOUNTS_CODEX ?? "codex";
 var serviceDir = join(tmpdir(), `codex-accounts-${process.getuid?.() ?? "user"}-${createHash("sha256").update(codexHome).digest("hex").slice(0, 12)}`);
@@ -29,7 +29,12 @@ function identity(raw) {
     const accountId = t.account_id ?? claims["https://api.openai.com/auth"]?.chatgpt_account_id;
     if (typeof accountId !== "string" || !accountId)
       throw new Error;
-    return { accountId, accessToken: t.access_token, plan: claims["https://api.openai.com/auth"]?.chatgpt_plan_type ?? null, expires: Number(access.exp ?? 0) };
+    return {
+      accountId,
+      accessToken: t.access_token,
+      plan: claims["https://api.openai.com/auth"]?.chatgpt_plan_type ?? null,
+      expires: Number(access.exp ?? 0)
+    };
   } catch {
     throw new Error("Credenciais ChatGPT sem identidade v\xE1lida.");
   }
@@ -37,7 +42,12 @@ function identity(raw) {
 
 // src/native-hook.ts
 async function post(event) {
-  return fetch("http://localhost/event", { unix: socketPath, method: "POST", body: JSON.stringify(event), signal: AbortSignal.timeout(2500) });
+  return fetch("http://localhost/event", {
+    unix: socketPath,
+    method: "POST",
+    body: JSON.stringify(event),
+    signal: AbortSignal.timeout(2500)
+  });
 }
 async function main() {
   const input = await Bun.stdin.text();
@@ -72,7 +82,13 @@ async function main() {
       if (!alive) {
         await rm(socketPath, { force: true });
         const script = join2(import.meta.dir, `native-backend.${import.meta.path.endsWith(".ts") ? "ts" : "js"}`);
-        const p = Bun.spawn([process.execPath, script], { env: process.env, detached: true, stdin: "ignore", stdout: "ignore", stderr: "ignore" });
+        const p = Bun.spawn([process.execPath, script], {
+          env: process.env,
+          detached: true,
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore"
+        });
         p.unref();
       }
     }

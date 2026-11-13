@@ -34,8 +34,8 @@ The build generates seven static routes in `website/dist/`; deploy that director
 
 In Cloudflare's DNS page for `eduardoaugusto.work`, configure this record:
 
-| Type | Name | Target | Proxy |
-| --- | --- | --- | --- |
+| Type  | Name             | Target                       | Proxy    |
+| ----- | ---------------- | ---------------------------- | -------- |
 | CNAME | `codex-accounts` | `eduardoaugustolb.github.io` | DNS only |
 
 Use automatic TTL. The CNAME target excludes the repository name. Preserve all unrelated DNS records. After GitHub validates DNS and provisions its certificate, enable **Enforce HTTPS** in Pages settings. `public/CNAME` is included in the generated static output; the GitHub Pages domain setting remains authoritative for Actions deployments.

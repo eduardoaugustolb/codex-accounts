@@ -49,24 +49,24 @@ The installed form is `codex-accounts <command> [arguments]`. From the project
 checkout, commands also work with `bun run start <command>` or
 `bun src/native-cli.ts <command>`. Script shortcuts are shown where available.
 
-| Command | Shortcut | Purpose |
-| --- | --- | --- |
-| `help`, `--help`, `-h` | `bun run help` | Show help without accessing the vault or starting the backend. |
-| `tui` | `bun run tui` | Open the interactive terminal account manager. |
-| `add NAME [--device]` | — | Register a new account through official login, in an isolated home. |
-| `capture NAME` | — | Save the current official file-based login. |
-| `list` | — | Print saved account aliases, one per line. |
-| `usage [NAME] [--json]` | `bun run usage` | Read fresh limits for one or all saved accounts. |
-| `switch NAME` | `bun run switch NAME` | Switch the shared idle Codex session to a saved account. |
-| `resume-after-reset on\|off` | `bun run resume-after-reset on` | Persist the independent reset-continuation preference. |
-| `remove NAME` | `bun run remove NAME` | Delete an inactive account from this device. |
-| `logout` | `bun run logout` | Sign out of the daemon without deleting saved accounts. |
-| `panel` | `bun run panel` | Start the backend if needed and open its local browser panel. |
-| `status` | `bun run status` | Print the private panel URL, or report that the backend is stopped. |
-| `start` | `bun run start start` | Start the backend and print the private panel URL. |
-| `restart` | `bun run restart` | Restart the plugin backend, preserving accounts and preferences. |
-| `stop` | `bun run stop` | Stop the plugin backend; this does not stop the official daemon. |
-| `install` | — | Register the built plugin and start the official daemon. Prefer `bun run setup` to build first. |
+| Command                      | Shortcut                        | Purpose                                                                                         |
+| ---------------------------- | ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `help`, `--help`, `-h`       | `bun run help`                  | Show help without accessing the vault or starting the backend.                                  |
+| `tui`                        | `bun run tui`                   | Open the interactive terminal account manager.                                                  |
+| `add NAME [--device]`        | —                               | Register a new account through official login, in an isolated home.                             |
+| `capture NAME`               | —                               | Save the current official file-based login.                                                     |
+| `list`                       | —                               | Print saved account aliases, one per line.                                                      |
+| `usage [NAME] [--json]`      | `bun run usage`                 | Read fresh limits for one or all saved accounts.                                                |
+| `switch NAME`                | `bun run switch NAME`           | Switch the shared idle Codex session to a saved account.                                        |
+| `resume-after-reset on\|off` | `bun run resume-after-reset on` | Persist the independent reset-continuation preference.                                          |
+| `remove NAME`                | `bun run remove NAME`           | Delete an inactive account from this device.                                                    |
+| `logout`                     | `bun run logout`                | Sign out of the daemon without deleting saved accounts.                                         |
+| `panel`                      | `bun run panel`                 | Start the backend if needed and open its local browser panel.                                   |
+| `status`                     | `bun run status`                | Print the private panel URL, or report that the backend is stopped.                             |
+| `start`                      | `bun run start start`           | Start the backend and print the private panel URL.                                              |
+| `restart`                    | `bun run restart`               | Restart the plugin backend, preserving accounts and preferences.                                |
+| `stop`                       | `bun run stop`                  | Stop the plugin backend; this does not stop the official daemon.                                |
+| `install`                    | —                               | Register the built plugin and start the official daemon. Prefer `bun run setup` to build first. |
 
 `<command> --help` shows the command overview. Invalid arguments and unknown
 commands return a nonzero exit code. Quota windows that cannot be read are data
@@ -164,24 +164,22 @@ bun run tui
 
 The active account is marked `* current`. Quota bars fill with **remaining**
 capacity. Select a row with Up/Down or j/k; selection wraps and scrolls as needed.
-The current interface uses generic ANSI styles and does not yet follow Codex's
-selected theme dynamically. See the [theme requirement](tui-theme.md) for the
-required behavior; this is a documented implementation gap.
+The interface follows the selected Codex theme dynamically, including built-in and custom TextMate definitions. See [theme behavior](tui-theme.md).
 Resize the terminal to see both quota windows together on wider screens.
 
-| Key | Result |
-| --- | --- |
-| Enter | Ask to switch to the selected account; y confirms, any other key cancels. |
-| r | Refresh all quotas immediately. |
-| a | Toggle `autoSwitch`. |
-| c | Toggle `autoContinue`. |
-| w | Toggle `resumeAfterReset`. |
-| n | Enter a new alias and start official device login. |
-| s | Enter an alias and capture the current official login. |
-| d | Ask to remove the selected account; y confirms. |
-| l | Ask to log out; y confirms. |
-| Esc | Cancel a name prompt or confirmation; exit from the main view. |
-| q / Ctrl+C | Exit the main view / exit the manager. |
+| Key        | Result                                                                    |
+| ---------- | ------------------------------------------------------------------------- |
+| Enter      | Ask to switch to the selected account; y confirms, any other key cancels. |
+| r          | Refresh all quotas immediately.                                           |
+| a          | Toggle `autoSwitch`.                                                      |
+| c          | Toggle `autoContinue`.                                                    |
+| w          | Toggle `resumeAfterReset`.                                                |
+| n          | Enter a new alias and start official device login.                        |
+| s          | Enter an alias and capture the current official login.                    |
+| d          | Ask to remove the selected account; y confirms.                           |
+| l          | Ask to log out; y confirms.                                               |
+| Esc        | Cancel a name prompt or confirmation; exit from the main view.            |
+| q / Ctrl+C | Exit the main view / exit the manager.                                    |
 
 Quotas refresh on entry, on r, and every 30 seconds while the manager is idle and
 no prompt is open. The manager does not submit overlapping UI actions. Backend
@@ -203,20 +201,20 @@ See [Automatic behavior and recovery](automation.md) for timing and eligibility.
 
 ## Troubleshooting
 
-| Symptom | What to do |
-| --- | --- |
-| `codex-accounts` command not found | Run `./install.sh`, then add the reported binary directory to your shell PATH. |
-| Installer finds an unmanaged command | Choose another `--bin-dir`; the installer will not overwrite unrelated commands or symlinks. |
-| TUI requires an interactive terminal | Open it in a terminal; use `usage --json` for redirected input/output. |
-| Unknown command or invalid arguments | Run `bun run help`; include an account alias where required. |
-| Account not registered | Run `bun run start list`, then register the intended alias. |
-| Quotas unavailable | Check official login and daemon connectivity; refresh with r or `bun run usage NAME`. Never replace unknown quotas with zero in scripts. |
-| Turn still active | Wait for all daemon conversations to finish, then retry switching or logout. |
-| Backend unavailable or old commands unsupported | Run `bun run restart` after updating; reopen the TUI. |
-| Panel link no longer works | Backend restarts rotate its private address; run `bun run panel`. |
-| Authentication refresh stopped after a backend restart | Select the saved account again after turns are idle to restore backend-owned refresh handling. |
-| Temporary daemon cannot be installed | Choose a short, writable `TMPDIR` with enough free space; integration tests install isolated daemons. |
-| Legacy directory lock detected | Stop all older clients and inspect the abandoned directory lock before removing it. Current SQLite locks release on process exit; never delete `mutation-lock.sqlite` while a client is running. |
+| Symptom                                                | What to do                                                                                                                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `codex-accounts` command not found                     | Run `./install.sh`, then add the reported binary directory to your shell PATH.                                                                                                                   |
+| Installer finds an unmanaged command                   | Choose another `--bin-dir`; the installer will not overwrite unrelated commands or symlinks.                                                                                                     |
+| TUI requires an interactive terminal                   | Open it in a terminal; use `usage --json` for redirected input/output.                                                                                                                           |
+| Unknown command or invalid arguments                   | Run `bun run help`; include an account alias where required.                                                                                                                                     |
+| Account not registered                                 | Run `bun run start list`, then register the intended alias.                                                                                                                                      |
+| Quotas unavailable                                     | Check official login and daemon connectivity; refresh with r or `bun run usage NAME`. Never replace unknown quotas with zero in scripts.                                                         |
+| Turn still active                                      | Wait for all daemon conversations to finish, then retry switching or logout.                                                                                                                     |
+| Backend unavailable or old commands unsupported        | Run `bun run restart` after updating; reopen the TUI.                                                                                                                                            |
+| Panel link no longer works                             | Backend restarts rotate its private address; run `bun run panel`.                                                                                                                                |
+| Authentication refresh stopped after a backend restart | Select the saved account again after turns are idle to restore backend-owned refresh handling.                                                                                                   |
+| Temporary daemon cannot be installed                   | Choose a short, writable `TMPDIR` with enough free space; integration tests install isolated daemons.                                                                                            |
+| Legacy directory lock detected                         | Stop all older clients and inspect the abandoned directory lock before removing it. Current SQLite locks release on process exit; never delete `mutation-lock.sqlite` while a client is running. |
 
 Treat `status` output and panel links as private. Do not paste authentication files,
 private panel URLs, or account emails into issues. Report vulnerabilities using
@@ -226,4 +224,4 @@ private panel URLs, or account emails into issues. Report vulnerabilities using
 
 Run `codex-accounts panel` to open the browser dashboard.
 
-The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The private local address is passed in a URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `panel` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
+The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The command prints a compact, already-paired hosted URL. The private local endpoint is encoded in its URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `codex-accounts status` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.

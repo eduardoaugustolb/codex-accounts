@@ -1,7 +1,10 @@
 import WebSocket from "ws";
 
 export class RpcError extends Error {
-  constructor(readonly kind: "rejected" | "outcomeUnknown" | "unavailable", readonly method: string) {
+  constructor(
+    readonly kind: "rejected" | "outcomeUnknown" | "unavailable",
+    readonly method: string,
+  ) {
     super(`RPC ${kind}: ${method}`);
     this.name = "RpcError";
   }
@@ -9,37 +12,73 @@ export class RpcError extends Error {
 
 abstract class RpcPeer {
   private seq = 0;
-  private pending = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void; method: string; timer: ReturnType<typeof setTimeout> }>();
+  private pending = new Map<
+    number,
+    {
+      resolve: (value: any) => void;
+      reject: (e: Error) => void;
+      method: string;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
   onNotification: (message: any) => void = () => {};
   // Requests are broadcast to multiple clients. Ignore requests owned by the
   // native TUI (especially approvals), instead of racing it with an error.
   onRequest: (message: any) => Promise<unknown> = async () => undefined;
   protected disconnected() {
-      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new RpcError("outcomeUnknown", p.method)); }
-      this.pending.clear();
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(new RpcError("outcomeUnknown", p.method));
+    }
+    this.pending.clear();
   }
   abstract send(message: unknown): void;
   call(method: string, params: unknown = {}, timeout = 15000): Promise<any> {
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new RpcError("outcomeUnknown", method)); }, timeout);
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new RpcError("outcomeUnknown", method));
+      }, timeout);
       this.pending.set(id, { resolve, reject, method, timer });
-      try { this.send({ id, method, params }); } catch { clearTimeout(timer); this.pending.delete(id); reject(new RpcError("unavailable", method)); }
+      try {
+        this.send({ id, method, params });
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new RpcError("unavailable", method));
+      }
     });
   }
   async initialize(experimental = false) {
-    await this.call("initialize", { clientInfo: { name: "codex_accounts", version: "0.2.0" }, capabilities: { experimentalApi: experimental } });
+    await this.call("initialize", {
+      clientInfo: { name: "codex_accounts", version: "0.2.0" },
+      capabilities: { experimentalApi: experimental },
+    });
     this.send({ method: "initialized", params: {} });
   }
   protected receive(msg: any) {
     if (msg.method && msg.id !== undefined) {
-      void this.onRequest(msg).then(result => { if (result !== undefined) this.send({ id: msg.id, result }); }, () => this.send({ id: msg.id, error: { code: -32603, message: "Local account backend failed" } })).catch(() => {});
+      void this.onRequest(msg)
+        .then(
+          (result) => {
+            if (result !== undefined) this.send({ id: msg.id, result });
+          },
+          () =>
+            this.send({
+              id: msg.id,
+              error: { code: -32603, message: "Local account backend failed" },
+            }),
+        )
+        .catch(() => {});
     } else if (msg.method) this.onNotification(msg);
     else {
       const p = this.pending.get(msg.id);
       if (!p) return;
-      clearTimeout(p.timer); this.pending.delete(msg.id);
-      if (msg.error) p.reject(new RpcError("rejected", p.method)); else p.resolve(msg.result);
+      clearTimeout(p.timer);
+      this.pending.delete(msg.id);
+      if (msg.error) p.reject(new RpcError("rejected", p.method));
+      else p.resolve(msg.result);
     }
   }
 }
@@ -50,26 +89,46 @@ export class Rpc extends RpcPeer {
   readonly done: Promise<void>;
   constructor(binary: string, args: string[], env: Record<string, string | undefined>) {
     super();
-    this.proc = Bun.spawn([binary, ...args], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
-    this.done = this.read().catch(() => {}).finally(() => this.disconnected());
+    this.proc = Bun.spawn([binary, ...args], {
+      env,
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    this.done = this.read()
+      .catch(() => {})
+      .finally(() => this.disconnected());
   }
-  send(message: unknown) { this.proc.stdin.write(JSON.stringify(message) + "\n"); this.proc.stdin.flush(); }
+  send(message: unknown) {
+    this.proc.stdin.write(JSON.stringify(message) + "\n");
+    this.proc.stdin.flush();
+  }
   private async read() {
     let buffer = "";
     for await (const chunk of this.proc.stdout.pipeThrough(new TextDecoderStream())) {
       buffer += chunk;
-      let index: number;
-      while ((index = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
-        if (!line.trim()) continue;
+      let index = buffer.indexOf("\n");
+      while (index >= 0) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        if (!line.trim()) {
+          index = buffer.indexOf("\n");
+          continue;
+        }
         this.receive(JSON.parse(line));
+        index = buffer.indexOf("\n");
       }
     }
   }
   async close() {
     this.proc.stdin.end();
     const timer = setTimeout(() => this.proc.kill("SIGKILL"), 2000);
-    try { await this.proc.exited; await this.done; } finally { clearTimeout(timer); }
+    try {
+      await this.proc.exited;
+      await this.done;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -79,18 +138,43 @@ export class UnixRpc extends RpcPeer {
   private readonly ready: Promise<void>;
   constructor(socketPath: string) {
     super();
-    this.socket = new WebSocket(`ws+unix:${socketPath}:/`, { handshakeTimeout: 3000, perMessageDeflate: false });
+    this.socket = new WebSocket(`ws+unix:${socketPath}:/`, {
+      handshakeTimeout: 3000,
+      perMessageDeflate: false,
+    });
     this.ready = new Promise((resolve, reject) => {
       this.socket.once("open", resolve);
-      this.socket.once("error", () => reject(new Error("Daemon oficial indisponível. Inicie codex app-server daemon start e reabra o Codex.")));
+      this.socket.once("error", () =>
+        reject(
+          new Error(
+            "Daemon oficial indisponível. Inicie codex app-server daemon start e reabra o Codex.",
+          ),
+        ),
+      );
     });
     // Consume eagerly; initialize also observes the same rejection.
     void this.ready.catch(() => {});
-    this.socket.on("message", raw => { try { this.receive(JSON.parse(String(raw))); } catch { this.socket.terminate(); } });
+    this.socket.on("message", (raw) => {
+      try {
+        this.receive(JSON.parse(String(raw)));
+      } catch {
+        this.socket.terminate();
+      }
+    });
     this.socket.on("close", () => this.disconnected());
   }
-  get closed() { return this.socket.readyState === WebSocket.CLOSED; }
-  send(message: unknown) { this.socket.send(JSON.stringify(message)); }
-  async initialize(experimental = false) { await this.ready; await super.initialize(experimental); }
-  async close() { this.socket.terminate(); this.disconnected(); }
+  get closed() {
+    return this.socket.readyState === WebSocket.CLOSED;
+  }
+  send(message: unknown) {
+    this.socket.send(JSON.stringify(message));
+  }
+  async initialize(experimental = false) {
+    await this.ready;
+    await super.initialize(experimental);
+  }
+  async close() {
+    this.socket.terminate();
+    this.disconnected();
+  }
 }

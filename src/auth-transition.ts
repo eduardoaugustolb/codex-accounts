@@ -6,8 +6,9 @@ export async function commitLogin(
   rollback: () => Promise<void>,
   reconcile: () => Promise<"selected" | "previous" | "unknown">,
 ) {
-  try { await login(); }
-  catch (error) {
+  try {
+    await login();
+  } catch (error) {
     if (error instanceof RpcError && error.kind !== "outcomeUnknown") {
       await rollback();
       throw error;
@@ -18,6 +19,8 @@ export async function commitLogin(
       await rollback();
       throw error;
     }
-    throw new Error("Authentication outcome unknown. Account mutations are blocked until reconciliation or daemon recovery.");
+    throw new Error(
+      "Authentication outcome unknown. Account mutations are blocked until reconciliation or daemon recovery.",
+    );
   }
 }

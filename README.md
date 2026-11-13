@@ -142,23 +142,21 @@ bun run start
 
 Select an account with **Up/Down** or **j/k**. The screen shows the active account,
 five-hour and weekly **remaining** capacity, and relative reset times. Press
-**Enter**, then **y**, to switch the shared session. The current TUI uses generic
-ANSI styles; it does not yet resolve the selected Codex theme. Dynamic inheritance is a required correction, documented in
-[Dynamic Codex theme inheritance](docs/tui-theme.md).
+**Enter**, then **y**, to switch the shared session. The TUI follows the selected Codex theme dynamically, including custom TextMate files, while preserving terminal-owned backgrounds and selection. See [theme behavior](docs/tui-theme.md).
 
-| Key | Action |
-| --- | --- |
-| Up/Down or j/k | Select an account |
-| Enter | Confirm an account switch with y |
-| r | Refresh all account quotas |
-| a | Toggle automatic switching |
-| c | Toggle continuation after autoswitch |
-| w | Toggle continuation after quota recovery |
-| n | Add an account using official device login |
-| s | Capture the current official login under a new name |
-| d | Remove the selected account, after confirmation |
-| l | Sign out of the shared session, after confirmation |
-| q, Esc, Ctrl+C | Exit; Esc cancels an open prompt first |
+| Key            | Action                                              |
+| -------------- | --------------------------------------------------- |
+| Up/Down or j/k | Select an account                                   |
+| Enter          | Confirm an account switch with y                    |
+| r              | Refresh all account quotas                          |
+| a              | Toggle automatic switching                          |
+| c              | Toggle continuation after autoswitch                |
+| w              | Toggle continuation after quota recovery            |
+| n              | Add an account using official device login          |
+| s              | Capture the current official login under a new name |
+| d              | Remove the selected account, after confirmation     |
+| l              | Sign out of the shared session, after confirmation  |
+| q, Esc, Ctrl+C | Exit; Esc cancels an open prompt first              |
 
 The backend keeps running when the TUI closes. Login temporarily returns control
 to the terminal; the manager restores its screen afterward. No wrapper or
@@ -185,11 +183,11 @@ All commands, arguments, output formats, and recovery steps are documented in th
 All three preferences are **off by default** and persisted in the private vault.
 Configure them in the TUI or the browser panel's **Preferências** section.
 
-| Preference | TUI | Behavior |
-| --- | --- | --- |
-| `autoSwitch` | a | Switch to another identity with confirmed capacity in both windows when quota is exhausted. |
-| `autoContinue` | c | After autoswitch, send `continue` to conversations interrupted by quota. Requires `autoSwitch`. |
-| `resumeAfterReset` | w | Resume quota-failed conversations on the current saved account once both quotas have capacity. Independent of autoswitch. |
+| Preference         | TUI | Behavior                                                                                                                  |
+| ------------------ | --- | ------------------------------------------------------------------------------------------------------------------------- |
+| `autoSwitch`       | a   | Switch to another identity with confirmed capacity in both windows when quota is exhausted.                               |
+| `autoContinue`     | c   | After autoswitch, send `continue` to conversations interrupted by quota. Requires `autoSwitch`.                           |
+| `resumeAfterReset` | w   | Resume quota-failed conversations on the current saved account once both quotas have capacity. Independent of autoswitch. |
 
 For reset continuation, the backend checks authoritative quotas every 30 seconds
 and after relevant daemon notifications. This covers five-hour resets, weekly
@@ -207,8 +205,8 @@ See [Automatic behavior and recovery](docs/automation.md) for eligibility,
 scheduling, persistence, safety rules, and examples of interacting preferences.
 
 ## Browser panel and backend lifecycle
-The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The private local address is passed in a URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `panel` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
 
+The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The command prints a compact, already-paired hosted URL. The private local endpoint is encoded in its URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `codex-accounts status` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
 
 ```bash
 bun run panel     # Start the backend if needed and open the panel
@@ -259,7 +257,7 @@ refresh handling.
 bun run test:all
 ```
 
-One command runs eleven stages: type checking, unit tests, build, installed CLI/TUI command verification, the terminal UI with a fake client, authentication, the CLI with manual switching, autoswitch without continuation, autoswitch with continuation, early/token reset continuation, and weekly reset waiting for 5-hour capacity. The suite stops on the first failure and also runs in GitHub Actions on pushes to `main` and pull requests. Use `bun test` for a quick feedback loop. Individual scripts remain available for troubleshooting.
+One command runs thirteen stages: formatting/lint, staged-hook isolation, type checking, unit tests, build, installed CLI/TUI command verification, the terminal UI with a fake client, authentication, the CLI with manual switching, autoswitch without continuation, autoswitch with continuation, early/token reset continuation, and weekly reset waiting for 5-hour capacity. The suite stops on the first failure and also runs in GitHub Actions on pushes to `main` and pull requests. Use `bun test` for a quick feedback loop. Individual scripts remain available for troubleshooting.
 
 Integration scenarios open sockets and a pseudoterminal, install the plugin in a temporary `CODEX_HOME`, and stop only their own processes. They do not authenticate real accounts or call external models. They require permission to open local sockets. `KEEP_CASE=1` preserves temporary artifacts when running an individual scenario for inspection.
 

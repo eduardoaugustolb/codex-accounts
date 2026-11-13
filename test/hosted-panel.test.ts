@@ -7,14 +7,21 @@ test("hosted panel pairing keeps the local capability in a fragment", () => {
   expect(url.origin).toBe(hostedPanelOrigin);
   expect(url.pathname).toBe("/");
   expect(url.search).toBe("");
-  expect(new URLSearchParams(url.hash.slice(1)).get("connect")).toBe(local);
+  expect(url.hash).toBe("#32123.fixture-secret");
 });
 
 test("only the exact hosted origin receives CORS access", () => {
-  for (const origin of ["https://evil.example", "null", hostedPanelOrigin + ".evil.example", "http://ca.eduardoaugusto.work"]) {
+  for (const origin of [
+    "https://evil.example",
+    "null",
+    hostedPanelOrigin + ".evil.example",
+    "http://ca.eduardoaugusto.work",
+  ]) {
     expect(hostedPanelCors(new Request("http://127.0.0.1", { headers: { origin } }))).toEqual({});
   }
-  const headers = hostedPanelCors(new Request("http://127.0.0.1", { headers: { origin: hostedPanelOrigin } }));
+  const headers = hostedPanelCors(
+    new Request("http://127.0.0.1", { headers: { origin: hostedPanelOrigin } }),
+  );
   expect(headers["access-control-allow-origin"]).toBe(hostedPanelOrigin);
   expect(headers["access-control-allow-private-network"]).toBe("true");
   expect(headers["access-control-allow-credentials"]).toBeUndefined();

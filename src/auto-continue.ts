@@ -1,8 +1,21 @@
-import { loadedThreadIds, readThread, latestTurn, type CodexClient, type LatestTurn } from "./codex-session";
-interface InterruptedTurn { threadId: string; turnId: string }
+import {
+  type CodexClient,
+  type LatestTurn,
+  latestTurn,
+  loadedThreadIds,
+  readThread,
+} from "./codex-session";
+
+interface InterruptedTurn {
+  threadId: string;
+  turnId: string;
+}
 
 function quotaFailure(turn: LatestTurn | undefined) {
-  return turn?.status === "failed" && /usage.?limit|usage_limit_reached|quota.{0,30}exceed/i.test(JSON.stringify(turn.error ?? ""));
+  return (
+    turn?.status === "failed" &&
+    /usage.?limit|usage_limit_reached|quota.{0,30}exceed/i.test(JSON.stringify(turn.error ?? ""))
+  );
 }
 
 /** Capture only loaded conversations whose latest turn failed because of quota. */
@@ -17,7 +30,11 @@ export async function interruptedTurns(client: CodexClient): Promise<Interrupted
   return interrupted;
 }
 
-export async function continueTurns(client: CodexClient, interrupted: InterruptedTurn[], enabled = () => true) {
+export async function continueTurns(
+  client: CodexClient,
+  interrupted: InterruptedTurn[],
+  enabled = () => true,
+) {
   let count = 0;
   for (const { threadId, turnId } of interrupted) {
     if (!enabled()) break;

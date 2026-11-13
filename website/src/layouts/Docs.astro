@@ -1,10 +1,11 @@
 ---
-import '../styles/docs.css';
-import Icon from '../components/Icon.astro';
-import { pages } from '../navigation';
+import "../styles/docs.css";
+import Icon from "../components/Icon.astro";
+import { pages } from "../navigation";
+
 const { frontmatter } = Astro.props;
 const current = Astro.url.pathname;
-const index = pages.findIndex(p => p.href === current);
+const index = pages.findIndex((p) => p.href === current);
 const next = pages[index + 1];
 const previous = pages[index - 1];
 ---

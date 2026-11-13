@@ -8,11 +8,11 @@ All tests used fake identities and tokens, isolated `CODEX_HOME` and SQLite dire
 
 `bun run test:auth-case` starts the official App Server and runs three turns in the same conversation. A `PostModelRequest` hook atomically replaces account A's file with account B's file.
 
-| Stage | Account on disk | Account observed in the request |
-| --- | --- | --- |
-| First turn | A → B through the hook | A |
-| Second turn in the same process | B | A |
-| Third turn after the RPC update | B | B |
+| Stage                           | Account on disk        | Account observed in the request |
+| ------------------------------- | ---------------------- | ------------------------------- |
+| First turn                      | A → B through the hook | A                               |
+| Second turn in the same process | B                      | A                               |
+| Third turn after the RPC update | B                      | B                               |
 
 The second and third turns included the first turn's marker. The file alone does not provide live account switching; the RPC changes authentication in memory without discarding local context.
 

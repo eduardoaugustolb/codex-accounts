@@ -6,11 +6,11 @@ replaces its binary, or injects keystrokes into its terminal.
 
 ## Preferences
 
-| Setting | Default | Requirement | Effect |
-| --- | --- | --- | --- |
-| `autoSwitch` | Off | Another saved identity with confirmed capacity in both windows | Switch the shared session after quota exhaustion. |
-| `autoContinue` | Off | `autoSwitch` enabled and a successful automatic switch | Continue loaded quota-failed conversations after login. |
-| `resumeAfterReset` | Off | Current identity is saved and both windows report positive capacity | Continue loaded quota-failed conversations after quota recovery. |
+| Setting            | Default | Requirement                                                         | Effect                                                           |
+| ------------------ | ------- | ------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `autoSwitch`       | Off     | Another saved identity with confirmed capacity in both windows      | Switch the shared session after quota exhaustion.                |
+| `autoContinue`     | Off     | `autoSwitch` enabled and a successful automatic switch              | Continue loaded quota-failed conversations after login.          |
+| `resumeAfterReset` | Off     | Current identity is saved and both windows report positive capacity | Continue loaded quota-failed conversations after quota recovery. |
 
 Set these in the browser's **Preferências** section or in `bun run tui` with a,
 c, and w respectively. To configure reset continuation directly:
@@ -52,16 +52,16 @@ backend operations, machine sleep, and daemon availability can delay a check.
 The service's observed capacity is authoritative; `resetsAt` is display metadata,
 not permission to submit a turn.
 
-| Event | Resume? |
-| --- | --- |
-| Five-hour quota recovers; weekly capacity is positive | Yes, for eligible failed turns. |
-| Weekly quota recovers; five-hour capacity is positive | Yes, for eligible failed turns. |
-| Weekly quota recovers; five-hour quota is still exhausted | No; keep waiting. |
-| A reset token restores capacity early | Yes, after the service reports positive capacity in both windows. |
-| A reset time passes but a read still reports exhaustion | No; keep waiting. |
-| A quota window is missing or the read fails | No; capacity is unconfirmed. |
-| User already continued or started another turn | No; the old failed turn is superseded. |
-| Failure is unrelated to quota | No. |
+| Event                                                     | Resume?                                                           |
+| --------------------------------------------------------- | ----------------------------------------------------------------- |
+| Five-hour quota recovers; weekly capacity is positive     | Yes, for eligible failed turns.                                   |
+| Weekly quota recovers; five-hour capacity is positive     | Yes, for eligible failed turns.                                   |
+| Weekly quota recovers; five-hour quota is still exhausted | No; keep waiting.                                                 |
+| A reset token restores capacity early                     | Yes, after the service reports positive capacity in both windows. |
+| A reset time passes but a read still reports exhaustion   | No; keep waiting.                                                 |
+| A quota window is missing or the read fails               | No; capacity is unconfirmed.                                      |
+| User already continued or started another turn            | No; the old failed turn is superseded.                            |
+| Failure is unrelated to quota                             | No.                                                               |
 
 The plugin **does not redeem reset tokens** or require their values. Redeem them
 through the supported external flow. The plugin detects the resulting quota

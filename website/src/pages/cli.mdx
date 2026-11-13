@@ -169,9 +169,7 @@ bun run tui
 
 The active account is marked `* current`. Quota bars fill with **remaining**
 capacity. Select a row with Up/Down or j/k; selection wraps and scrolls as needed.
-The current interface uses generic ANSI styles and does not yet follow Codex's
-selected theme dynamically. See the [theme requirement](https://github.com/eduardoaugustolb/codex-accounts/blob/main/docs/tui-theme.md) for the
-required behavior; this is a documented implementation gap.
+The interface follows the selected Codex theme dynamically, including built-in and custom TextMate definitions. See [theme behavior](https://github.com/eduardoaugustolb/codex-accounts/blob/main/docs/tui-theme.md).
 Resize the terminal to see both quota windows together on wider screens.
 
 | Key | Result |
@@ -231,4 +229,4 @@ private panel URLs, or account emails into issues. Report vulnerabilities using
 
 Run `codex-accounts panel` to open the browser dashboard.
 
-The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The private local address is passed in a URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `panel` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
+The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The command prints a compact, already-paired hosted URL. The private local endpoint is encoded in its URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `codex-accounts status` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.

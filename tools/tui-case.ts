@@ -1,11 +1,15 @@
 import { join } from "node:path";
+import { terminalText } from "../src/tui";
 
 // A PTY and fake client exercise raw input and restoration without a real vault.
 const modulePath = join(import.meta.dir, "../src/tui.ts");
 const source = `
 import { runTui } from ${JSON.stringify(modulePath)};
+import { resolveTuiTheme } from ${JSON.stringify(join(import.meta.dir, "../src/tui-theme.ts"))};
+let themeReads = 0;
 const state = { accounts: [{name:"one",current:true},{name:"two",current:false}],autoSwitch:false,autoContinue:false,resumeAfterReset:false };
 await runTui({
+  async theme() { return resolveTuiTheme("/unused", themeReads++ ? "dali" : "ada", {TERM:"xterm-256color", COLORTERM:"truecolor"}); },
   async state() { return structuredClone(state); },
   async request(event) {
     if (event.action === "usage") return {accounts:state.accounts};
@@ -24,11 +28,17 @@ console.log("TUI_RESTORED=" + !process.stdin.isRaw);
 let output = "";
 const child = Bun.spawn([process.execPath, "-e", source], {
   cwd: join(import.meta.dir, ".."),
-  terminal: { cols: 120, rows: 30, data(_terminal, bytes) { output += new TextDecoder().decode(bytes); } },
+  terminal: {
+    cols: 120,
+    rows: 30,
+    data(_terminal, bytes) {
+      output += new TextDecoder().decode(bytes);
+    },
+  },
 });
 async function waitFor(text: string) {
   const deadline = Date.now() + 5000;
-  while (!output.includes(text)) {
+  while (!(text.includes("\x1b") ? output.includes(text) : terminalText(output).includes(text))) {
     if (Date.now() > deadline) throw new Error(`TUI did not render ${text}`);
     await Bun.sleep(20);
   }
@@ -40,6 +50,8 @@ async function press(key: string, expected: string) {
 }
 try {
   await waitFor("Ready. Quotas refreshed.");
+  await waitFor("\x1b[38;2;95;175;255m");
+  await waitFor("\x1b[38;2;215;175;0m");
   await press("\x1b[B", "> two");
   await press("\r", "Confirm switch two?");
   await press("n", "Canceled.");
@@ -54,10 +66,16 @@ try {
   await press("n", "Add (device login) - name:");
   await press("\x1b", "Enter: switch");
   await press("q", "TUI_RESTORED=true");
-  if (await child.exited !== 0) throw new Error("TUI exited unsuccessfully");
-  if (!output.includes("\x1b[?25h") || !output.includes("\x1b[?1049l")) throw new Error("TUI left cursor or alternate screen active");
-  console.log("TUI: navigation, confirmation/cancel, switching, independent preferences, error recovery and terminal restoration: OK");
+  if ((await child.exited) !== 0) throw new Error("TUI exited unsuccessfully");
+  if (!output.includes("\x1b[?25h") || !output.includes("\x1b[?1049l"))
+    throw new Error("TUI left cursor or alternate screen active");
+  console.log(
+    "TUI: navigation, confirmation/cancel, switching, independent preferences, error recovery and terminal restoration: OK",
+  );
 } finally {
-  if (child.exitCode === null) { child.kill("SIGTERM"); await child.exited; }
+  if (child.exitCode === null) {
+    child.kill("SIGTERM");
+    await child.exited;
+  }
   child.terminal?.close();
 }

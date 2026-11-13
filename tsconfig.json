@@ -1,7 +1,13 @@
 {
   "compilerOptions": {
-    "target": "ESNext", "module": "Preserve", "moduleResolution": "Bundler",
-    "strict": true, "noEmit": true, "lib": ["ESNext"], "types": ["bun"], "skipLibCheck": true
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "lib": ["ESNext"],
+    "types": ["bun"],
+    "skipLibCheck": true
   },
   "include": ["src", "test", "tools"]
 }

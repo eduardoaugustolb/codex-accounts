@@ -2,25 +2,58 @@ import { join } from "node:path";
 
 const root = join(import.meta.dir, "..");
 const steps = [
+  { name: "Formatting and lint", args: ["run", "check:style"] },
+  { name: "Staged hook isolation", args: ["tools/style-hook-case.ts"] },
   { name: "TypeScript", args: ["run", "check"] },
   { name: "Testes unitários", args: ["test"] },
   { name: "Build do plugin", args: ["run", "build"] },
-  { name: "Installed CLI/TUI command in isolated directories", args: ["tools/install-cli-case.ts"] },
+  {
+    name: "Installed CLI/TUI command in isolated directories",
+    args: ["tools/install-cli-case.ts"],
+  },
   { name: "Terminal UI with isolated fake client", args: ["tools/tui-case.ts"] },
   { name: "Autenticação e histórico", args: ["tools/auth-hook-case.ts"] },
-  { name: "CLI: troca manual, segurança, preferências e ciclo de vida", args: ["tools/native-cli-case.ts"] },
-  { name: "CLI: autoswitch sem continuação", args: ["tools/native-cli-case.ts"], env: { AUTO_SWITCH_CASE: "1" } },
-  { name: "CLI: autoswitch com continuação", args: ["tools/native-cli-case.ts"], env: { AUTO_SWITCH_CASE: "1", AUTO_CONTINUE_CASE: "1" } },
-  { name: "CLI: early/token quota reset continuation", args: ["tools/native-cli-case.ts"], env: { RESET_CASE: "token" } },
-  { name: "CLI: weekly reset waits for 5h capacity", args: ["tools/native-cli-case.ts"], env: { RESET_CASE: "weekly" } },
+  {
+    name: "CLI: troca manual, segurança, preferências e ciclo de vida",
+    args: ["tools/native-cli-case.ts"],
+  },
+  {
+    name: "CLI: autoswitch sem continuação",
+    args: ["tools/native-cli-case.ts"],
+    env: { AUTO_SWITCH_CASE: "1" },
+  },
+  {
+    name: "CLI: autoswitch com continuação",
+    args: ["tools/native-cli-case.ts"],
+    env: { AUTO_SWITCH_CASE: "1", AUTO_CONTINUE_CASE: "1" },
+  },
+  {
+    name: "CLI: early/token quota reset continuation",
+    args: ["tools/native-cli-case.ts"],
+    env: { RESET_CASE: "token" },
+  },
+  {
+    name: "CLI: weekly reset waits for 5h capacity",
+    args: ["tools/native-cli-case.ts"],
+    env: { RESET_CASE: "weekly" },
+  },
 ];
 const started = Date.now();
 for (const [i, step] of steps.entries()) {
   console.log(`\n[${i + 1}/${steps.length}] ${step.name}`);
   const proc = Bun.spawn([process.execPath, ...step.args], {
     cwd: root,
-    env: { ...process.env, AUTO_SWITCH_CASE: "0", AUTO_CONTINUE_CASE: "0", RESET_CASE: "", KEEP_CASE: "", ...step.env },
-    stdin: "ignore", stdout: "inherit", stderr: "inherit",
+    env: {
+      ...process.env,
+      AUTO_SWITCH_CASE: "0",
+      AUTO_CONTINUE_CASE: "0",
+      RESET_CASE: "",
+      KEEP_CASE: "",
+      ...step.env,
+    },
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
   });
   const exitCode = await proc.exited;
   if (exitCode !== 0) {
@@ -28,4 +61,6 @@ for (const [i, step] of steps.entries()) {
     process.exit(exitCode || 1);
   }
 }
-console.log(`\nSuíte concluída: ${steps.length} etapas em ${((Date.now() - started) / 1000).toFixed(1)}s.`);
+console.log(
+  `\nSuíte concluída: ${steps.length} etapas em ${((Date.now() - started) / 1000).toFixed(1)}s.`,
+);
