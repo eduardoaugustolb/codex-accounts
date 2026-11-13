@@ -21,11 +21,13 @@ test("update preserves installation paths/mode and cleans its temporary checkout
     });
     expect(calls[0]!.slice(0, 3)).toEqual(["git", "clone", "--depth"]);
     expect(calls[0]).toContain("https://github.com/eduardoaugustolb/codex-accounts.git");
+    expect(calls[0]!.at(-1)!.startsWith(join(dataDir, ".ca-update-"))).toBe(true);
     expect(calls[1]!.slice(2)).toEqual([
       "--bin-dir",
       metadata.binDir,
       "--data-dir",
       dataDir,
+      "--update",
       "--cli-only",
     ]);
     expect(
@@ -34,11 +36,19 @@ test("update preserves installation paths/mode and cleans its temporary checkout
         () => false,
       ),
     ).toBe(false);
+    let failedCheckout = "";
     await expect(
-      updateApplication(moduleDir, async () => {
+      updateApplication(moduleDir, async (args) => {
+        failedCheckout = args.at(-1)!;
         throw new Error("fixture network failure");
       }),
     ).rejects.toThrow("fixture network failure");
+    expect(
+      await stat(join(failedCheckout, "..")).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
     await writeFile(
       join(release, "installation.json"),
       JSON.stringify({ ...metadata, dataDir: "/unrelated" }),

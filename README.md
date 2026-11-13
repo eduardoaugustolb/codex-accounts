@@ -296,6 +296,10 @@ codex-accounts update
 codex-accounts restart
 ```
 
-The updater clones the official repository's latest `main` into a temporary directory and runs its installer. Git and Bun must be available. It preserves custom binary/data directories, manager-only installation mode, saved accounts, and preferences. It does not run `git pull` in your working checkout. The temporary source is removed after success or failure. This currently installs the latest source version rather than a tagged release.
+The updater clones the official repository's latest `main` into a private temporary directory inside the installation's data directory and runs its installer. This keeps the checkout and dependency installation off potentially space-limited `/tmp` filesystems. Git and Bun must be available. It preserves custom binary/data directories, manager-only installation mode, saved accounts, and preferences. It does not run `git pull` in your working checkout. The temporary source is removed after success or failure. This currently installs the latest source version rather than a tagged release.
+
+If an older updater fails with `ENOSPC` on `/tmp`, retry with `TMPDIR="$HOME" codex-accounts update`, provided your home filesystem has enough free space.
 
 Running backends and conversations are preserved during installation. Restart the backend when ready, review changed hooks in Codex `/hooks`, and reopen `codex-accounts panel`. Installations created before update metadata was introduced need one `./install.sh` run from the existing checkout first; later updates use `codex-accounts update`. A source invocation of `update` is rejected because it has no managed installation target.
+
+Updates register the new plugin without starting the official daemon or local backend. To apply a local checkout with the same behavior, run `bun run setup --update`. A fresh installation still starts both services. A missing daemon control socket during an older updater's installation does not mean dependency installation or compilation failed; retry from the fixed checkout with `bun run setup --update`.

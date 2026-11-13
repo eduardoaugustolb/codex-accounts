@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 export type InstallCommand = (args: string[]) => Promise<string>;
 
 /** Repoint only our local marketplace, restoring its old source if registration fails. */
-export async function installPlugin(root: string, run: InstallCommand) {
+export async function installPlugin(root: string, run: InstallCommand, startDaemon = true) {
   const listing = JSON.parse(await run(["plugin", "marketplace", "list", "--json"]));
   if (!Array.isArray(listing.marketplaces))
     throw new Error("Invalid marketplace inventory; no registration changed.");
@@ -36,5 +36,5 @@ export async function installPlugin(root: string, run: InstallCommand) {
     throw error;
   }
   await run(["plugin", "add", "codex-accounts@codex-accounts-local"]);
-  await run(["app-server", "daemon", "start"]);
+  if (startDaemon) await run(["app-server", "daemon", "start"]);
 }

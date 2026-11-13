@@ -110,6 +110,19 @@ try {
       !updates.some((args) => args.join(" ") === "plugin marketplace remove codex-accounts-local")
     )
       throw new Error("Full reinstall did not migrate the old marketplace source");
+    await run(["sh", join(root, "install.sh"), "--update", "--bin-dir", bin, "--data-dir", data]);
+    const afterUpdate = (await readFile(calls, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const updateCalls = afterUpdate.slice(updates.length);
+    if (
+      !updateCalls.some(
+        (args) => args.join(" ") === "plugin add codex-accounts@codex-accounts-local",
+      ) ||
+      updateCalls.some((args) => args[0] === "app-server")
+    )
+      throw new Error("Update must register the plugin without starting the daemon");
   } finally {
     await run([launcher, "stop"]);
   }

@@ -1,5 +1,4 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 export interface UpdateInstallation {
@@ -30,7 +29,8 @@ export async function updateApplication(moduleDir: string, run = runUpdateComman
       "This command requires a managed installation. Run ./install.sh once from the project checkout, then use codex-accounts update.",
     );
   }
-  const temporary = await mkdtemp(join(tmpdir(), "ca-update-"));
+  // Build on the installation filesystem: /tmp may be a small, crowded tmpfs.
+  const temporary = await mkdtemp(join(installation.dataDir, ".ca-update-"));
   try {
     const checkout = join(temporary, "source");
     console.log(
@@ -54,6 +54,7 @@ export async function updateApplication(moduleDir: string, run = runUpdateComman
       installation.binDir,
       "--data-dir",
       installation.dataDir,
+      "--update",
       ...(installation.cliOnly ? ["--cli-only"] : []),
     ]);
     console.log(

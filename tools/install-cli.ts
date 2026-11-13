@@ -9,7 +9,8 @@ const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 async function main() {
   const rawArgs = process.argv.slice(2);
   const cliOnly = rawArgs.includes("--cli-only");
-  const args = rawArgs.filter((arg) => arg !== "--cli-only");
+  const update = rawArgs.includes("--update");
+  const args = rawArgs.filter((arg) => arg !== "--cli-only" && arg !== "--update");
   if (args.includes("--help") || args.includes("-h")) {
     console.log(
       "Usage: ./install.sh [--cli-only] [--bin-dir PATH] [--data-dir PATH]\nInstall CLI, TUI, plugin, official daemon, and local backend. Use --cli-only for the manager command alone.\nDefaults: ~/.local/bin and $XDG_DATA_HOME/codex-accounts/cli (or ~/.local/share/codex-accounts/cli).",
@@ -89,8 +90,8 @@ async function main() {
     if (!installed) await rm(release, { recursive: true, force: true });
   }
   if (!cliOnly) {
-    for (const command of ["install", "start"]) {
-      const child = Bun.spawn([target, command], {
+    for (const command of update ? ["install"] : ["install", "start"]) {
+      const child = Bun.spawn([target, command, ...(update ? ["--no-start"] : [])], {
         stdin: "inherit",
         stdout: command === "start" ? "ignore" : "inherit",
         stderr: "inherit",
@@ -101,7 +102,9 @@ async function main() {
         );
     }
     console.log(
-      "Plugin, official daemon, and local backend are ready. Review and trust all four hooks in Codex /hooks, then start a new conversation.",
+      update
+        ? "Plugin updated. Daemon and backend lifecycle preserved. Review changed hooks in Codex /hooks."
+        : "Plugin, official daemon, and local backend are ready. Review and trust all four hooks in Codex /hooks, then start a new conversation.",
     );
   }
   console.log(

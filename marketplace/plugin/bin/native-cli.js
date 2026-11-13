@@ -25,7 +25,7 @@ function hostedPanelCors(request) {
 
 // src/install-plugin.ts
 import { resolve } from "path";
-async function installPlugin(root, run) {
+async function installPlugin(root, run, startDaemon = true) {
   const listing = JSON.parse(await run(["plugin", "marketplace", "list", "--json"]));
   if (!Array.isArray(listing.marketplaces))
     throw new Error("Invalid marketplace inventory; no registration changed.");
@@ -51,7 +51,8 @@ async function installPlugin(root, run) {
     throw error;
   }
   await run(["plugin", "add", "codex-accounts@codex-accounts-local"]);
-  await run(["app-server", "daemon", "start"]);
+  if (startDaemon)
+    await run(["app-server", "daemon", "start"]);
 }
 
 // src/native-paths.ts
@@ -13480,7 +13481,6 @@ async function readTuiTheme() {
 
 // src/update.ts
 import { mkdtemp, readFile as readFile2, rm as rm2 } from "fs/promises";
-import { tmpdir as tmpdir2 } from "os";
 import { dirname, join as join3, resolve as resolve5 } from "path";
 async function readUpdateInstallation(moduleDir) {
   const release = resolve5(moduleDir, "../../..");
@@ -13496,7 +13496,7 @@ async function updateApplication(moduleDir, run = runUpdateCommand) {
   } catch {
     throw new Error("This command requires a managed installation. Run ./install.sh once from the project checkout, then use codex-accounts update.");
   }
-  const temporary = await mkdtemp(join3(tmpdir2(), "ca-update-"));
+  const temporary = await mkdtemp(join3(installation.dataDir, ".ca-update-"));
   try {
     const checkout = join3(temporary, "source");
     console.log("Downloading the latest Codex Accounts version from the official project repository...");
@@ -13518,6 +13518,7 @@ async function updateApplication(moduleDir, run = runUpdateCommand) {
       installation.binDir,
       "--data-dir",
       installation.dataDir,
+      "--update",
       ...installation.cliOnly ? ["--cli-only"] : []
     ]);
     console.log("Update installed. Existing conversations and running backends are preserved. Run codex-accounts restart when ready to load the updated backend, then review changed hooks in Codex /hooks.");
@@ -13588,7 +13589,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
   ];
   if (!valid.includes(command))
     throw new Error(`Unknown command: ${command}. Run --help.`);
-  if (command === "usage" ? args.slice(1).filter((a) => a !== "--json").length > 1 || args.slice(1).some((a) => a.startsWith("--") && a !== "--json") : command === "resume-after-reset" ? !["on", "off"].includes(name ?? "") || args.length !== 2 : ["switch", "remove", "capture"].includes(command) ? !name || args.length !== 2 : command === "add" ? !name || args.length > 3 || Boolean(flag && flag !== "--device") : args.length !== (requestedCommand ? 1 : 0))
+  if (command === "usage" ? args.slice(1).filter((a) => a !== "--json").length > 1 || args.slice(1).some((a) => a.startsWith("--") && a !== "--json") : command === "resume-after-reset" ? !["on", "off"].includes(name ?? "") || args.length !== 2 : ["switch", "remove", "capture"].includes(command) ? !name || args.length !== 2 : command === "add" ? !name || args.length > 3 || Boolean(flag && flag !== "--device") : command === "install" ? args.length !== 1 && !(args.length === 2 && name === "--no-start") : args.length !== (requestedCommand ? 1 : 0))
     throw new Error("Invalid arguments. Run --help.");
   if (command === "tui" && (!process.stdin.isTTY || !process.stdout.isTTY))
     throw new Error("The TUI requires an interactive terminal. Use usage --json for scripts.");
@@ -13770,7 +13771,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
       if (await p.exited !== 0)
         throw new Error("Installation command failed: " + args.slice(0, 3).join(" "));
       return output;
-    });
+    }, name !== "--no-start");
     console.log("Plugin instalado. Abra codex e revise/confie nos quatro hooks em /hooks. Depois inicie uma nova conversa.");
     return;
   }

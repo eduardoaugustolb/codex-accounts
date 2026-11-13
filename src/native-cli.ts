@@ -75,7 +75,9 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
           ? !name || args.length !== 2
           : command === "add"
             ? !name || args.length > 3 || Boolean(flag && flag !== "--device")
-            : args.length !== (requestedCommand ? 1 : 0)
+            : command === "install"
+              ? args.length !== 1 && !(args.length === 2 && name === "--no-start")
+              : args.length !== (requestedCommand ? 1 : 0)
   )
     throw new Error("Invalid arguments. Run --help.");
   if (command === "tui" && (!process.stdin.isTTY || !process.stdout.isTTY))
@@ -250,18 +252,22 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     const root = import.meta.path.endsWith(".ts")
       ? resolve(import.meta.dir, "../marketplace")
       : resolve(import.meta.dir, "../..");
-    await installPlugin(root, async (args) => {
-      const p = Bun.spawn([binary, ...args], {
-        env: { ...process.env, CODEX_HOME: codexHome },
-        stdin: "inherit",
-        stdout: "pipe",
-        stderr: "inherit",
-      });
-      const output = await p.stdout.text();
-      if ((await p.exited) !== 0)
-        throw new Error("Installation command failed: " + args.slice(0, 3).join(" "));
-      return output;
-    });
+    await installPlugin(
+      root,
+      async (args) => {
+        const p = Bun.spawn([binary, ...args], {
+          env: { ...process.env, CODEX_HOME: codexHome },
+          stdin: "inherit",
+          stdout: "pipe",
+          stderr: "inherit",
+        });
+        const output = await p.stdout.text();
+        if ((await p.exited) !== 0)
+          throw new Error("Installation command failed: " + args.slice(0, 3).join(" "));
+        return output;
+      },
+      name !== "--no-start",
+    );
     console.log(
       "Plugin instalado. Abra codex e revise/confie nos quatro hooks em /hooks. Depois inicie uma nova conversa.",
     );
