@@ -7,6 +7,7 @@ import { binary, codexHome, endpointPath, identity, socketPath } from "./native-
 import { Store } from "./store";
 import { runTui, type TuiState } from "./tui";
 import { readTuiTheme } from "./tui-theme-config";
+import { updateApplication } from "./update";
 
 async function main() {
   const [requestedCommand, name, flag] = process.argv.slice(2);
@@ -27,6 +28,7 @@ async function main() {
   status                         Print panel address or stopped status
   start, restart, stop            Manage backend lifecycle
   install                        Install plugin and start official daemon
+  update                         Download and install the latest application version
 
 Examples:
   codex-accounts
@@ -60,6 +62,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     "restart",
     "stop",
     "install",
+    "update",
   ];
   if (!valid.includes(command)) throw new Error(`Unknown command: ${command}. Run --help.`);
   if (
@@ -77,6 +80,10 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     throw new Error("Invalid arguments. Run --help.");
   if (command === "tui" && (!process.stdin.isTTY || !process.stdout.isTTY))
     throw new Error("The TUI requires an interactive terminal. Use usage --json for scripts.");
+  if (command === "update") {
+    await updateApplication(import.meta.dir);
+    return;
+  }
   const store = new Store();
   await store.init();
   if (command === "remove") {

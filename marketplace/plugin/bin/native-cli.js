@@ -2,8 +2,8 @@
 // @bun
 
 // src/native-cli.ts
-import { mkdir as mkdir3, rm as rm2 } from "fs/promises";
-import { join as join3, resolve as resolve5 } from "path";
+import { mkdir as mkdir3, rm as rm3 } from "fs/promises";
+import { join as join4, resolve as resolve6 } from "path";
 
 // src/hosted-panel.ts
 var hostedPanelOrigin = "https://ca.eduardoaugusto.work";
@@ -13478,6 +13478,59 @@ async function readTuiTheme() {
   }
 }
 
+// src/update.ts
+import { mkdtemp, readFile as readFile2, rm as rm2 } from "fs/promises";
+import { tmpdir as tmpdir2 } from "os";
+import { dirname, join as join3, resolve as resolve5 } from "path";
+async function readUpdateInstallation(moduleDir) {
+  const release = resolve5(moduleDir, "../../..");
+  const metadata = JSON.parse(await readFile2(join3(release, "installation.json"), "utf8"));
+  if (typeof metadata.binDir !== "string" || typeof metadata.dataDir !== "string" || typeof metadata.cliOnly !== "boolean" || !metadata.binDir.startsWith("/") || !metadata.dataDir.startsWith("/") || dirname(release) !== join3(resolve5(metadata.dataDir), "releases"))
+    throw new Error("Invalid installation metadata. Reinstall with ./install.sh before updating.");
+  return metadata;
+}
+async function updateApplication(moduleDir, run = runUpdateCommand) {
+  let installation;
+  try {
+    installation = await readUpdateInstallation(moduleDir);
+  } catch {
+    throw new Error("This command requires a managed installation. Run ./install.sh once from the project checkout, then use codex-accounts update.");
+  }
+  const temporary = await mkdtemp(join3(tmpdir2(), "ca-update-"));
+  try {
+    const checkout = join3(temporary, "source");
+    console.log("Downloading the latest Codex Accounts version from the official project repository...");
+    await run([
+      "git",
+      "clone",
+      "--depth",
+      "1",
+      "--single-branch",
+      "--branch",
+      "main",
+      "https://github.com/eduardoaugustolb/codex-accounts.git",
+      checkout
+    ]);
+    await run([
+      process.execPath,
+      join3(checkout, "tools/install-cli.ts"),
+      "--bin-dir",
+      installation.binDir,
+      "--data-dir",
+      installation.dataDir,
+      ...installation.cliOnly ? ["--cli-only"] : []
+    ]);
+    console.log("Update installed. Existing conversations and running backends are preserved. Run codex-accounts restart when ready to load the updated backend, then review changed hooks in Codex /hooks.");
+  } finally {
+    await rm2(temporary, { recursive: true, force: true });
+  }
+}
+async function runUpdateCommand(args) {
+  const child = Bun.spawn(args, { stdin: "inherit", stdout: "inherit", stderr: "inherit" });
+  if (await child.exited !== 0)
+    throw new Error("Update failed. Check the preceding command output and retry. Git and Bun must be installed.");
+}
+
 // src/native-cli.ts
 async function main() {
   const [requestedCommand, name, flag] = process.argv.slice(2);
@@ -13497,6 +13550,7 @@ async function main() {
   status                         Print panel address or stopped status
   start, restart, stop            Manage backend lifecycle
   install                        Install plugin and start official daemon
+  update                         Download and install the latest application version
 
 Examples:
   codex-accounts
@@ -13529,7 +13583,8 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     "start",
     "restart",
     "stop",
-    "install"
+    "install",
+    "update"
   ];
   if (!valid.includes(command))
     throw new Error(`Unknown command: ${command}. Run --help.`);
@@ -13537,6 +13592,10 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     throw new Error("Invalid arguments. Run --help.");
   if (command === "tui" && (!process.stdin.isTTY || !process.stdout.isTTY))
     throw new Error("The TUI requires an interactive terminal. Use usage --json for scripts.");
+  if (command === "update") {
+    await updateApplication(import.meta.dir);
+    return;
+  }
   const store = new Store;
   await store.init();
   if (command === "remove") {
@@ -13602,7 +13661,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
       return;
     }
     if (!endpoint) {
-      const script = join3(import.meta.dir, `native-hook.${import.meta.path.endsWith(".ts") ? "ts" : "js"}`);
+      const script = join4(import.meta.dir, `native-hook.${import.meta.path.endsWith(".ts") ? "ts" : "js"}`);
       const p = Bun.spawn([process.execPath, script], {
         stdin: "pipe",
         stdout: "ignore",
@@ -13699,7 +13758,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     return;
   }
   if (command === "install") {
-    const root = import.meta.path.endsWith(".ts") ? resolve5(import.meta.dir, "../marketplace") : resolve5(import.meta.dir, "../..");
+    const root = import.meta.path.endsWith(".ts") ? resolve6(import.meta.dir, "../marketplace") : resolve6(import.meta.dir, "../..");
     await installPlugin(root, async (args) => {
       const p = Bun.spawn([binary, ...args], {
         env: { ...process.env, CODEX_HOME: codexHome },
@@ -13734,7 +13793,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     if (command === "capture")
       raw = await store.auth(codexHome);
     else {
-      staging = join3(store.root, `login-${crypto.randomUUID()}`);
+      staging = join4(store.root, `login-${crypto.randomUUID()}`);
       await mkdir3(staging, { mode: 448 });
       const p = Bun.spawn([
         binary,
@@ -13757,7 +13816,7 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
     console.log(`Conta ${name} cadastrada.`);
   } finally {
     if (staging)
-      await rm2(staging, { recursive: true, force: true });
+      await rm3(staging, { recursive: true, force: true });
     await unlock();
   }
 }

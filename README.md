@@ -286,3 +286,16 @@ bun run docs:build
 
 Open `http://localhost:4321`. The static output is written to `website/dist/`.
 See [website/README.md](website/README.md) for editing and validation details.
+
+## Updating without a checkout
+
+Once installed with the current installer, run from any directory:
+
+```bash
+codex-accounts update
+codex-accounts restart
+```
+
+The updater clones the official repository's latest `main` into a temporary directory and runs its installer. Git and Bun must be available. It preserves custom binary/data directories, manager-only installation mode, saved accounts, and preferences. It does not run `git pull` in your working checkout. The temporary source is removed after success or failure. This currently installs the latest source version rather than a tagged release.
+
+Running backends and conversations are preserved during installation. Restart the backend when ready, review changed hooks in Codex `/hooks`, and reopen `codex-accounts panel`. Installations created before update metadata was introduced need one `./install.sh` run from the existing checkout first; later updates use `codex-accounts update`. A source invocation of `update` is rejected because it has no managed installation target.

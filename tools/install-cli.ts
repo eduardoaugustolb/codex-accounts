@@ -73,6 +73,11 @@ async function main() {
       recursive: true,
       dereference: false,
     });
+    await writeFile(
+      join(release, "installation.json"),
+      JSON.stringify({ binDir, dataDir, cliOnly }),
+      { mode: 0o600, flag: "wx" },
+    );
     const cli = join(release, "marketplace", "plugin", "bin", "native-cli.js");
     const launcher = `#!/bin/sh\n${marker}\nexec ${quote(process.execPath)} ${quote(cli)} "$@"\n`;
     await writeFile(temporary, launcher, { flag: "wx", mode: 0o755 });

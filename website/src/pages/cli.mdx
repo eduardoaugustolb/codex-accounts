@@ -230,3 +230,16 @@ private panel URLs, or account emails into issues. Report vulnerabilities using
 Run `codex-accounts panel` to open the browser dashboard.
 
 The browser opens **https://ca.eduardoaugusto.work** and pairs with the backend on this device. The command prints a compact, already-paired hosted URL. The private local endpoint is encoded in its URL fragment, consumed by the browser, and retained only for this tab. Allow access to apps on this device if the browser prompts. If local-network access is blocked, use the private local URL printed by `codex-accounts status` directly. Backend restarts require pairing again. The static hosting service does not receive your account credentials or relay local requests. Update the installation and restart the backend before using this feature.
+
+## Updating without a checkout
+
+Once installed with the current installer, run from any directory:
+
+```bash
+codex-accounts update
+codex-accounts restart
+```
+
+The updater clones the official repository's latest `main` into a temporary directory and runs its installer. Git and Bun must be available. It preserves custom binary/data directories, manager-only installation mode, saved accounts, and preferences. It does not run `git pull` in your working checkout. The temporary source is removed after success or failure. This currently installs the latest source version rather than a tagged release.
+
+Running backends and conversations are preserved during installation. Restart the backend when ready, review changed hooks in Codex `/hooks`, and reopen `codex-accounts panel`. Installations created before update metadata was introduced need one `./install.sh` run from the existing checkout first; later updates use `codex-accounts update`. A source invocation of `update` is rejected because it has no managed installation target.

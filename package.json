@@ -38,7 +38,8 @@
     "check:style": "biome check .",
     "check:staged": "bun tools/check-staged.ts",
     "hooks:install": "bun tools/setup-hooks.ts",
-    "prepare": "bun tools/setup-hooks.ts"
+    "prepare": "bun tools/setup-hooks.ts",
+    "update": "bun src/native-cli.ts update"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
