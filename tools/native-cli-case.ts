@@ -19,7 +19,7 @@ let resetAvailable = false;
 let fiveHourAvailable = false;
 const autoCase = process.env.AUTO_SWITCH_CASE === "1";
 const continueCase = process.env.AUTO_CONTINUE_CASE === "1";
-const seen: { account: string | null; input: any }[] = [];
+const seen: { account: string | null; input: any; quotaRejected: boolean }[] = [];
 let refreshes = 0;
 const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   const path = new URL(req.url).pathname;
@@ -37,8 +37,9 @@ const server = Bun.serve({ hostname: "127.0.0.1", port: 0, async fetch(req) {
   if (path.endsWith("/accounts/check")) return Response.json({ accounts: [{ id: req.headers.get("chatgpt-account-id") ?? "account-A", workspace_backend_origin: "https://chatgpt.com", account_routing_override: "NO_CONSTRAINT" }] });
   if (path.endsWith("/responses")) {
     const account = req.headers.get("chatgpt-account-id");
-    seen.push({ account, input: await req.json() });
-    if (account === "account-A" && !(resetCase && resetAvailable && (resetCase !== "weekly" || fiveHourAvailable))) return Response.json({ error: { type: "usage_limit_reached", plan_type: "plus", message: "You've hit your usage limit", resets_at: Math.floor(Date.now()/1000)+3600 } }, { status: 429 });
+    const quotaRejected = account === "account-A" && !(resetCase && resetAvailable && (resetCase !== "weekly" || fiveHourAvailable));
+    seen.push({ account, input: await req.json(), quotaRejected });
+    if (quotaRejected) return Response.json({ error: { type: "usage_limit_reached", plan_type: "plus", message: "You've hit your usage limit", resets_at: Math.floor(Date.now()/1000)+3600 } }, { status: 429 });
     const token = req.headers.get("authorization")?.replace(/^Bearer /, "") ?? "";
     const generation = JSON.parse(Buffer.from(token.split(".")[1],"base64url").toString()).generation;
     if (generation === 0 && !resetCase) return Response.json({ error: { message: "expired fake access token", type: "invalid_token" } }, { status: 401 });
@@ -122,19 +123,24 @@ trust_level = "trusted"
     if (resetCase === "weekly") {
       // Weekly capacity alone cannot resume while the 5h window remains exhausted.
       await Bun.sleep(32000);
-      if (seen.length !== count) {
-        const claims = await Bun.file(join(store.root, "reset-continuation-claims.json")).json().catch(() => []);
-        const loaded = await observer!.call("thread/loaded/list");
-        const turns = await observer!.call("thread/turns/list", { threadId: loaded.data[0], limit: 20, sortDirection: "desc" });
+      // HTTP requests are not turns: the official client may retry a rejected request.
+      // A backend continuation must create a durable claim and a new daemon turn.
+      const claims = await Bun.file(join(store.root, "reset-continuation-claims.json")).json().catch((error) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
+      });
+      const loaded = await observer!.call("thread/loaded/list");
+      const turns = await observer!.call("thread/turns/list", { threadId: loaded.data[0], limit: 20, sortDirection: "desc" });
+      if (claims.length !== 0 || turns.data.length !== 1 || turns.data[0]?.status !== "failed" || seen.slice(count).some(request => !request.quotaRejected)) {
         throw new Error(`Resumed without 5h capacity: requests=${seen.length}, initialRequests=${count}, claims=${claims.length}, turns=${turns.data.length}`);
       }
       fiveHourAvailable = true;
     }
     // resetsAt deliberately stays in the future: this models an early token reset.
-    await waitFor(() => seen.length > count, "reset continuation", 45000);
+    await waitFor(() => seen.slice(count).some(request => !request.quotaRejected), "reset continuation", 45000);
     await waitFor(() => output.includes("ACCOUNT_B_CONTEXT_OK"), "reset reply", 20000);
     if (seen.slice(count).some(r => r.account !== "account-A")) throw new Error("Reset switched accounts");
-    if (!JSON.stringify(seen[count]!.input).includes("NATIVE_CONTEXT_42")) throw new Error("Reset lost conversation history");
+    if (!JSON.stringify(seen.slice(count).find(request => !request.quotaRejected)!.input).includes("NATIVE_CONTEXT_42")) throw new Error("Reset lost conversation history");
     await Bun.sleep(1000);
     const loaded = await observer!.call("thread/loaded/list");
     const resumed = await observer!.call("thread/turns/list", {threadId:loaded.data[0],limit:20,sortDirection:"desc"});

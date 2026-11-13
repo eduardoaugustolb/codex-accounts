@@ -72,3 +72,11 @@ runs help and list from another working directory, updates a managed launcher,
 refuses to overwrite an unrelated executable, checks redirected-input behavior,
 and opens/exits the installed command's default TUI through a PTY and fake IPC
 backend. No personal installation, shell startup file, or real account was changed.
+
+## Weekly-reset CI assertion correction
+
+A subsequent CI failure reported two HTTP requests, zero durable reset claims, and one daemon turn. That evidence does not demonstrate a backend continuation: a request count can change within an existing turn. The fixture now records whether each request was rejected by the quota gate. While five-hour capacity is exhausted, the integration requires no durable claim, exactly one failed daemon turn, and no newly accepted inference request. After both windows recover, it waits for an accepted request and retains the existing checks for exactly two turns, one durable claim, the same account/process, and preserved context. Only missing claim files are treated as an empty ledger; other read/parse failures propagate.
+
+The README now references the existing generated brand asset directly.
+
+Validation after the correction: the isolated weekly-reset scenario passed, and `TMPDIR=/var/tmp bun run test:all` passed all 11 stages in 86.9 seconds (29 unit tests). `bun run check` and `git diff --check` also passed. No runtime backend behavior changed.

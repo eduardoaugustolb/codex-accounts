@@ -1,5 +1,7 @@
 # Codex Accounts
 
+<img src="website/public/brand/codex-accounts-logo.png" alt="Codex Accounts logo" width="112" height="112" />
+
 [![Test suite](https://github.com/eduardoaugustolb/codex-accounts/actions/workflows/ci.yml/badge.svg)](https://github.com/eduardoaugustolb/codex-accounts/actions/workflows/ci.yml) [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Manage ChatGPT accounts in the **official Codex CLI** through a terminal interface,
