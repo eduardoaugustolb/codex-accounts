@@ -33,29 +33,36 @@ cli_auth_credentials_store = "file"
 
 If you previously used the keyring, sign in again through the official login flow in this mode before using the plugin. The installer does not change this setting or extract credentials from the keyring.
 
-From the project directory:
+### Automatic installation
+
+With Git, Bun, and the official Codex CLI already installed, clone the repository and run the installer:
 
 ```bash
+git clone https://github.com/eduardoaugustolb/codex-accounts.git
+cd codex-accounts
+./install.sh
+```
+
+**No separate dependency-install step is needed.** The script runs `bun install --frozen-lockfile`, builds and copies the CLI, TUI, backend, and plugin, registers the installed plugin with Codex, and starts the official daemon and local backend. It does not install Git, Bun, or the official Codex CLI, or configure file-based authentication for you.
+
+The equivalent command, after cloning and entering the repository, is `bun run setup`; it also installs project dependencies automatically.
+
+### Explicit dependency installation
+
+If you prefer to run dependency installation yourself, use this alternative from a fresh checkout:
+
+```bash
+git clone https://github.com/eduardoaugustolb/codex-accounts.git
+cd codex-accounts
 bun install --frozen-lockfile
 bun run setup
 ```
 
-Setup builds the package into `marketplace/plugin/bin`, registers the local marketplace, installs the plugin with the official command, and starts the official daemon. It does not modify the binary or configure aliases.
+Setup checks dependencies again using the frozen lockfile. Both entry points perform the same complete installation and preserve the official `codex` binary.
 
-### Install the CLI and TUI command
+### Installed command
 
-`bun run setup` also installs the `codex-accounts` command in `~/.local/bin`.
-To install the complete application from the project directory, run:
-
-```bash
-bun install --frozen-lockfile
-./install.sh
-# Equivalent: bun run setup
-```
-
-Both `./install.sh` and `bun run setup` install dependencies, build and copy the CLI, TUI, backend and plugin, register the installed plugin with Codex, start the official daemon, and start the local backend. Review and trust all four hooks in Codex `/hooks` before starting a new conversation.
-
-For only the manager command, use `./install.sh --cli-only` or `bun run install:cli`.
+The installer places `codex-accounts` in `~/.local/bin`. For only the manager command, use `./install.sh --cli-only` or `bun run install:cli` after cloning and entering the repository; these also install project dependencies.
 
 The installer copies the built marketplace into
 `${XDG_DATA_HOME:-$HOME/.local/share}/codex-accounts/cli/releases` and creates an

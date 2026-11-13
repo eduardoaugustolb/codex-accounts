@@ -23,14 +23,15 @@ All automatic preferences are off by default. Enable only the behavior you need.
 
 ## Install the plugin
 
-From the project checkout, install dependencies and run setup:
+Clone the repository, enter its directory, and run the automatic installer. Git, Bun, and the official Codex CLI must already be installed:
 
 ```bash
-bun install --frozen-lockfile
-bun run setup
+git clone https://github.com/eduardoaugustolb/codex-accounts.git
+cd codex-accounts
+./install.sh
 ```
 
-Setup installs the manager command, registers the local plugin, and starts the official daemon. In Codex, open `/hooks`, review all four hooks, and start a new conversation.
+The installer installs project dependencies automatically, installs the CLI and TUI, registers the local plugin, and starts the official daemon and local backend. No separate `bun install` is needed. In Codex, open `/hooks`, review all four hooks, and start a new conversation.
 
 See [Installation](/installation/) for requirements and file-based authentication configuration.
 

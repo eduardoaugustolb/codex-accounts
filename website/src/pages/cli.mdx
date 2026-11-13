@@ -9,6 +9,16 @@ Install the complete application with `./install.sh` or `bun run setup`. Both in
 any directory. `bun run setup` installs the command and registers the plugin.
 Keep using the official `codex` command to work on your conversations.
 
+For a fresh installation:
+
+```bash
+git clone https://github.com/eduardoaugustolb/codex-accounts.git
+cd codex-accounts
+./install.sh
+```
+
+The installer installs project dependencies automatically; a separate `bun install` is unnecessary. Git, Bun, and the official Codex CLI must already be installed.
+
 The command is installed in `~/.local/bin` by default. Add that directory to your
 shell's PATH if necessary; no shell alias or startup-file modification is needed.
 Use `./install.sh --help` for custom binary and data directories. Installation
