@@ -67,6 +67,34 @@ The plugin **does not redeem reset tokens** or require their values. Redeem them
 through the supported external flow. The plugin detects the resulting quota
 change without waiting for the previously advertised reset time.
 
+## Does a reset on an inactive account trigger switching?
+
+Not through a continuous subscription to every saved account. The periodic
+reset job reads the **current saved account** first. If that account remains
+exhausted or has a pending quota failure and `autoSwitch` is enabled, the same
+monitor cycle reads alternative accounts sequentially through isolated helpers.
+
+With `resumeAfterReset` and `autoSwitch` both enabled, a recovered inactive
+account can therefore be discovered on a periodic check and selected before the
+current account recovers. Both its five-hour and weekly windows must have
+confirmed capacity, and all loaded daemon turns must be idle before switching.
+The polling interval is 30 seconds; reads and busy operations can add delay.
+
+This is not an earliest-reset scheduler. Candidates are checked in alphabetical
+alias order, and the first different identity with confirmed capacity is chosen.
+The backend does not rank accounts by reset timestamps or maintain a live
+notification subscription for every inactive account.
+
+Enable **all three preferences** for periodic recovery checks, switching to a
+recovered alternative, and continuation immediately after a successful
+autoswitch. With only `resumeAfterReset`, the manager waits for the current
+account. With `autoContinue` off, the switch does not immediately submit a turn;
+if `resumeAfterReset` stays enabled, a later check on the newly current account
+can still continue an eligible quota-failed conversation.
+
+`autoSwitch` alone reacts to hooks and daemon notifications; its setting does
+not create the independent 30-second reset polling job.
+
 ## Conversation eligibility
 
 For either continuation path, the conversation must:

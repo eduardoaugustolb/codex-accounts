@@ -54,8 +54,10 @@ Write clear commit messages, preferably using Conventional Commits. Do not publi
 
 ## Terminal interface
 
-Use the terminal's default foreground and background, with bold headings, dim
-metadata, and reverse-video selection. Do not introduce a fixed accent palette.
+Follow the active Codex theme dynamically, as specified in `docs/tui-theme.md`.
+Generic ANSI styles are not theme inheritance. Resolve the selected theme rather
+than hard-coding a palette; preserve terminal UI colors where Codex uses them.
+This is a pending requirement, not a feature already implemented.
 Restore raw mode, cursor visibility, and the alternate screen on every exit.
 Sanitize account labels and backend messages before rendering terminal output.
 Use private backend IPC for actions; never send keystrokes to the official CLI.

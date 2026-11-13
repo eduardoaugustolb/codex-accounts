@@ -91,9 +91,9 @@ bun run start
 
 Select an account with **Up/Down** or **j/k**. The screen shows the active account,
 five-hour and weekly **remaining** capacity, and relative reset times. Press
-**Enter**, then **y**, to switch the shared session. The TUI follows the terminal's
-default foreground and background colors, using bold headings, dim details, and
-reverse-video selection so it fits light and dark Codex terminal themes.
+**Enter**, then **y**, to switch the shared session. The current TUI uses generic
+ANSI styles; it does not yet resolve the selected Codex theme. Dynamic inheritance is a required correction, documented in
+[Dynamic Codex theme inheritance](docs/tui-theme.md).
 
 | Key | Action |
 | --- | --- |

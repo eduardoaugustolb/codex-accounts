@@ -27,9 +27,11 @@ Do not include credentials, personal configuration directories, or test artifact
 - `docs/automation.md`: automation settings, scheduling, eligibility, and recovery.
 - `docs/validation-2026-11-12.md`: tested environment and reproducible evidence.
 
-The terminal theme inherits the user's foreground and background. Use bold, dim,
-and reverse video instead of a fixed accent or background palette. Keep terminal
-control characters out of account labels and service messages.
+The TUI must follow the active Codex theme dynamically; generic bold, dim, and
+reverse-video styles do not satisfy theme inheritance. The implementation is
+pending. Follow [the theme contract](docs/tui-theme.md), preserving terminal UI
+colors where Codex uses them and resolving the selected theme where applicable.
+Keep terminal control characters out of account labels and service messages.
 
 When changing `src/`, run `bun run build` and commit the generated files in
 `marketplace/plugin/bin`. Validate behavioral changes with `bun run test:all`.

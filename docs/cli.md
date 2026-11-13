@@ -142,7 +142,9 @@ bun run tui
 
 The active account is marked `* current`. Quota bars fill with **remaining**
 capacity. Select a row with Up/Down or j/k; selection wraps and scrolls as needed.
-The interface uses your terminal colors rather than imposing a separate theme.
+The current interface uses generic ANSI styles and does not yet follow Codex's
+selected theme dynamically. See the [theme requirement](tui-theme.md) for the
+required behavior; this is a documented implementation gap.
 Resize the terminal to see both quota windows together on wider screens.
 
 | Key | Result |
