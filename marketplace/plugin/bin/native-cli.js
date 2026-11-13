@@ -248,7 +248,9 @@ async function runTui(client) {
 }
 
 // src/store.ts
-import { mkdir, chmod, readFile, rename, writeFile, readdir, rm, lstat } from "fs/promises";
+import { Database } from "bun:sqlite";
+import { constants } from "fs";
+import { mkdir, chmod, readFile, rename, writeFile, readdir, rm, lstat, open } from "fs/promises";
 import { join, resolve } from "path";
 import { homedir } from "os";
 
@@ -272,15 +274,41 @@ class Store {
   }
   async lock() {
     await this.init();
-    const path = join(this.root, "lock");
-    try {
-      await mkdir(path, { mode: 448 });
-    } catch {
-      throw new Error(`Outro codex-accounts est\xE1 usando estes dados. Se houve uma queda, confirme que n\xE3o est\xE1 rodando antes de remover ${path}.`);
+    if (await Bun.file(join(this.root, "lock", "pid")).exists() || await lstat(join(this.root, "lock")).then(() => true, (error) => {
+      if (error.code === "ENOENT")
+        return false;
+      throw error;
+    }))
+      throw new Error("Legacy vault lock detected. Stop all older clients before removing the abandoned lock directory.");
+    const path = join(this.root, "mutation-lock.sqlite");
+    const file = await open(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 384);
+    await file.close();
+    const entry = await lstat(path);
+    if (!entry.isFile() || entry.isSymbolicLink() || process.getuid && entry.uid !== process.getuid()) {
+      throw new Error("Unsafe vault lock file.");
     }
-    await writeFile(join(path, "pid"), String(process.pid), { mode: 384 });
+    await chmod(path, 384);
+    const database = new Database(path);
+    try {
+      database.exec("PRAGMA busy_timeout = 0");
+      database.exec("BEGIN IMMEDIATE");
+    } catch (error) {
+      database.close();
+      if (error.code === "SQLITE_BUSY") {
+        throw new Error("Outro codex-accounts est\xE1 usando estes dados. Tente novamente ap\xF3s a opera\xE7\xE3o atual.");
+      }
+      throw error;
+    }
+    let released = false;
     return async () => {
-      await rm(path, { recursive: true });
+      if (released)
+        return;
+      released = true;
+      try {
+        database.exec("ROLLBACK");
+      } finally {
+        database.close();
+      }
     };
   }
   async names() {
@@ -368,7 +396,7 @@ function identity(raw) {
 async function main() {
   const [requestedCommand, name, flag] = process.argv.slice(2);
   const command = requestedCommand ?? (process.stdin.isTTY && process.stdout.isTTY ? "tui" : undefined);
-  const help = `Usage: bun run start <command>
+  const help = `Usage: codex-accounts <command>
   tui                            Open the interactive terminal account manager
   help, --help, -h                Show this help (also: <command> --help)
   add NAME [--device]             Register an account using official login
@@ -385,10 +413,11 @@ async function main() {
   install                        Install plugin and start official daemon
 
 Examples:
-  bun run start usage
-  bun run start usage work --json
-  bun run start switch personal
-  bun run start resume-after-reset on
+  codex-accounts
+  codex-accounts usage
+  codex-accounts usage work --json
+  codex-accounts switch personal
+  codex-accounts resume-after-reset on
 
 Usage shows remaining percentages and reset timestamps for 5h and weekly quotas.
 Switching waits for idle conversations; busy sessions return an error.
@@ -430,10 +459,11 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
       const result = await fetch("http://localhost/event", { unix: socketPath, method: "POST", body: JSON.stringify({ action: "shutdown" }), signal: AbortSignal.timeout(3000) });
       if (!result.ok)
         throw new Error("Backend n\xE3o confirmou o encerramento.");
-      for (let i = 0;i < 60; i++) {
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
         if (!await Bun.file(endpointPath).exists() && !await state())
           return;
-        await Bun.sleep(50);
+        await Bun.sleep(100);
       }
       throw new Error("Backend ainda est\xE1 encerrando. Tente novamente.");
     }

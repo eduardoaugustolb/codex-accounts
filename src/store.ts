@@ -1,4 +1,6 @@
-import { mkdir, chmod, readFile, rename, writeFile, readdir, rm, lstat } from "node:fs/promises";
+import { Database } from "bun:sqlite";
+import { constants } from "node:fs";
+import { mkdir, chmod, readFile, rename, writeFile, readdir, rm, lstat, open } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 
@@ -20,11 +22,38 @@ export class Store {
   }
   async lock() {
     await this.init();
-    const path = join(this.root, "lock");
-    try { await mkdir(path, { mode: 0o700 }); }
-    catch { throw new Error(`Outro codex-accounts está usando estes dados. Se houve uma queda, confirme que não está rodando antes de remover ${path}.`); }
-    await writeFile(join(path, "pid"), String(process.pid), { mode: 0o600 });
-    return async () => { await rm(path, { recursive: true }); };
+    // Older releases use a directory lock. Never overlap that protocol.
+    if (await Bun.file(join(this.root, "lock", "pid")).exists() || await lstat(join(this.root, "lock")).then(() => true, (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    })) throw new Error("Legacy vault lock detected. Stop all older clients before removing the abandoned lock directory.");
+    const path = join(this.root, "mutation-lock.sqlite");
+    const file = await open(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 0o600);
+    await file.close();
+    const entry = await lstat(path);
+    if (!entry.isFile() || entry.isSymbolicLink() || (process.getuid && entry.uid !== process.getuid())) {
+      throw new Error("Unsafe vault lock file.");
+    }
+    await chmod(path, 0o600);
+    const database = new Database(path);
+    try {
+      database.exec("PRAGMA busy_timeout = 0");
+      // Keep the transaction open across awaited IO. transaction(async ...) would
+      // commit early. Kernel locks disappear even after SIGKILL or a crash.
+      database.exec("BEGIN IMMEDIATE");
+    } catch (error) {
+      database.close();
+      if ((error as { code?: string }).code === "SQLITE_BUSY") {
+        throw new Error("Outro codex-accounts está usando estes dados. Tente novamente após a operação atual.");
+      }
+      throw error;
+    }
+    let released = false;
+    return async () => {
+      if (released) return;
+      released = true;
+      try { database.exec("ROLLBACK"); } finally { database.close(); }
+    };
   }
   async names() {
     const names = await readdir(join(this.root, "accounts"), { withFileTypes: true });

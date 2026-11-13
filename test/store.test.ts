@@ -32,6 +32,31 @@ test("concurrent account mutations cannot overwrite refreshed credentials", asyn
   await unlock(); const unlockB = await b.lock(); await unlockB();
 });
 
+test("vault lock excludes another process and is released after SIGKILL", async () => {
+  const root = await temporary();
+  const module = Bun.fileURLToPath(new URL("../src/store.ts", import.meta.url));
+  const child = Bun.spawn([process.execPath, "--eval", `
+    import { Store } from ${JSON.stringify(module)};
+    await new Store(process.env.TEST_VAULT_PATH).lock();
+    process.stdout.write("ready");
+    setInterval(() => {}, 1000);
+  `], { env: { ...process.env, TEST_VAULT_PATH: root }, stdout: "pipe", stderr: "pipe" });
+  try {
+    const reader = child.stdout.getReader();
+    const ready = await reader.read();
+    reader.releaseLock();
+    expect(new TextDecoder().decode(ready.value)).toBe("ready");
+    const store = new Store(root);
+    await expect(store.lock()).rejects.toThrow("Outro codex-accounts");
+    child.kill("SIGKILL");
+    await child.exited;
+    const unlock = await store.lock();
+    expect((await stat(join(root, "mutation-lock.sqlite"))).mode & 0o777).toBe(0o600);
+    await unlock();
+    await unlock();
+  } finally { child.kill(); await child.exited; }
+});
+
 test("invalid auth never includes secret content in error", async () => {
   const s = new Store(await temporary()); await s.init();
   await s.saveAuth(s.account("broken"), "TOP_SECRET_MALFORMED");

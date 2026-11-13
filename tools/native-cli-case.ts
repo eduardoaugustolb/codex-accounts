@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, rm, realpath } from "node:fs/promises";
+import { writeFile, mkdtemp, mkdir, rm, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fakeAuth } from "./fixtures/fake-auth";
@@ -122,7 +122,12 @@ trust_level = "trusted"
     if (resetCase === "weekly") {
       // Weekly capacity alone cannot resume while the 5h window remains exhausted.
       await Bun.sleep(32000);
-      if (seen.length !== count) throw new Error("Resumed without 5h capacity");
+      if (seen.length !== count) {
+        const claims = await Bun.file(join(store.root, "reset-continuation-claims.json")).json().catch(() => []);
+        const loaded = await observer!.call("thread/loaded/list");
+        const turns = await observer!.call("thread/turns/list", { threadId: loaded.data[0], limit: 20, sortDirection: "desc" });
+        throw new Error(`Resumed without 5h capacity: requests=${seen.length}, initialRequests=${count}, claims=${claims.length}, turns=${turns.data.length}`);
+      }
       fiveHourAvailable = true;
     }
     // resetsAt deliberately stays in the future: this models an early token reset.
@@ -287,6 +292,18 @@ trust_level = "trusted"
   await fetch(persistedUrl + "settings", {method:"POST",body:new URLSearchParams({csrf:persistedCsrf})});
   const liveResponse = await fetch(persistedUrl + "live?fresh=1");
   if (!liveResponse.ok || !(await liveResponse.text()).includes("account-B@example.invalid")) throw new Error("Fresh live snapshot failed");
+  // Simulate a process dying after a login submission, before acknowledgement.
+  await localCli("stop");
+  const transition = join(store.root, "auth-transition.json");
+  await writeFile(transition, JSON.stringify({ accountId: "account-B", startedAt: Date.now() }), { mode: 0o600 });
+  await localCli("start");
+  const uncertainState = await (await fetch("http://localhost/state", { unix: join(ipcDir, "backend.sock") })).json() as any;
+  if (!uncertainState.authUncertain) throw new Error("Uncertain login state lost after restart");
+  const blockedSwitch = await fetch("http://localhost/event", { unix: join(ipcDir, "backend.sock"), method: "POST", body: JSON.stringify({ action: "switch", account: "two" }) });
+  if (blockedSwitch.status !== 409) throw new Error("Uncertain login permitted another switch");
+  if (!(await localCli("logout")).includes("Logout concluído")) throw new Error("Uncertain login recovery failed");
+  if (await Bun.file(transition).exists()) throw new Error("Successful logout retained transition marker");
+  console.log("Uncertain login survives restart, blocks switches and recovers through logout: OK");
   console.log("Live client, SSE, fresh snapshots and persistent opt-in/disable: OK");
   console.log("Lifecycle, panel logout, CLI logout and login after logout: OK");
   console.log(JSON.stringify({ officialBinary: binary, wrapper: false, sameCliProcess: terminal.pid === tuiPid, sameThread,

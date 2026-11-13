@@ -30,11 +30,49 @@ If you previously used the keyring, sign in again through the official login flo
 From the project directory:
 
 ```bash
-bun install
+bun install --frozen-lockfile
 bun run setup
 ```
 
 Setup builds the package into `marketplace/plugin/bin`, registers the local marketplace, installs the plugin with the official command, and starts the official daemon. It does not modify the binary or configure aliases.
+
+### Install the CLI and TUI command
+
+`bun run setup` also installs the `codex-accounts` command in `~/.local/bin`.
+To install only the CLI and TUI from the project directory, run:
+
+```bash
+bun install --frozen-lockfile
+./install.sh
+# Equivalent: bun run install:cli
+```
+
+This installs the manager command without registering the plugin or starting the
+daemon. For the complete plugin installation, use `bun run setup` above.
+
+The installer copies the built marketplace into
+`${XDG_DATA_HOME:-$HOME/.local/share}/codex-accounts/cli/releases` and creates an
+executable launcher. It works from any directory and does not depend on keeping
+this checkout in place. Bun must remain installed. Existing managed installations
+are updated; unrelated commands at the target path are never overwritten.
+Previous releases are retained so running backends can finish using them.
+
+If `~/.local/bin` is not in your `PATH`, add it through your shell configuration.
+The installer prints a POSIX-shell command for the selected directory and does
+not edit shell startup files. Custom locations are supported with
+`./install.sh --bin-dir /path/to/bin --data-dir /path/to/app-data`.
+
+```bash
+codex-accounts                    # Open the TUI in an interactive terminal
+codex-accounts tui                # Explicit TUI command
+codex-accounts --help
+codex-accounts usage work --json
+codex-accounts switch personal
+```
+
+Rerun `./install.sh` after updating the checkout, or use `bun run setup` to also
+update the plugin. The command name is a launcher for this manager; the official
+`codex` command is preserved.
 
 Open `codex`, enter `/hooks`, and review and trust **all four Codex Accounts hooks**. Then start a new conversation. Trust is tied to the plugin contents, so an update may require another review. Do not use `--dangerously-bypass-hook-trust`: this option disables daemon reuse in Codex 0.167.2.
 
@@ -189,6 +227,9 @@ refresh handling.
 ## Storage and limitations
 
 - Vault: `~/.local/share/codex-accounts/accounts/NAME/auth.json`, or `CODEX_ACCOUNTS_HOME`. Credentials use `0600` files inside `0700` directories.
+- Vault mutations use a private SQLite transaction lock supplied by Bun. The operating system releases it after a process crash. Stop older backend/CLI versions before updating; a legacy `lock` directory is rejected rather than removed automatically. Never delete `mutation-lock.sqlite` while any client is running.
+- A login timeout is treated as an uncertain result, not a rejection. The backend reconciles the identity when the daemon supplies an account ID; otherwise it blocks further account mutations. This state survives backend restarts. Use `bun run logout` to explicitly sign out the idle shared session and clear the uncertainty, then select the intended account again. Do not delete `auth-transition.json` to bypass this protection.
+- Corrupt or unreadable continuation claims stop backend startup instead of silently forgetting submitted turns. Back up and repair `reset-continuation-claims.json` before restarting; do not replace it with an empty list to retry uncertain submissions.
 - The backend keeps the connection that handles external token refresh requests. It uses a separate official App Server to refresh saved account credentials and stores the updated refresh token.
 - The panel listens only on `127.0.0.1`, with a random address per run, origin checks, and CSRF-protected forms. IPC uses a Unix socket in a private temporary directory.
 - The backend runs in the background. `bun run stop` stops it; `bun run panel` starts it again. Stopping it while external authentication is active interrupts token refresh handling. After restarting the backend, select the account again in the panel to restore that handling. Restarting the daemon or CLI returns managed authentication to Codex.
@@ -203,7 +244,7 @@ refresh handling.
 bun run test:all
 ```
 
-One command runs ten stages: type checking, unit tests, build, the terminal UI with a fake client, authentication, the CLI with manual switching, autoswitch without continuation, autoswitch with continuation, early/token reset continuation, and weekly reset waiting for 5-hour capacity. The suite stops on the first failure and also runs in GitHub Actions on pushes to `main` and pull requests. Use `bun test` for a quick feedback loop. Individual scripts remain available for troubleshooting.
+One command runs eleven stages: type checking, unit tests, build, installed CLI/TUI command verification, the terminal UI with a fake client, authentication, the CLI with manual switching, autoswitch without continuation, autoswitch with continuation, early/token reset continuation, and weekly reset waiting for 5-hour capacity. The suite stops on the first failure and also runs in GitHub Actions on pushes to `main` and pull requests. Use `bun test` for a quick feedback loop. Individual scripts remain available for troubleshooting.
 
 Integration scenarios open sockets and a pseudoterminal, install the plugin in a temporary `CODEX_HOME`, and stop only their own processes. They do not authenticate real accounts or call external models. They require permission to open local sockets. `KEEP_CASE=1` preserves temporary artifacts when running an individual scenario for inspection.
 
@@ -216,3 +257,5 @@ Sources: [Hooks](https://learn.chatgpt.com/docs/hooks), [App Server](https://dev
 ## Contributing and security
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development and [SECURITY.md](SECURITY.md) for private vulnerability reports. Licensed under [MIT](LICENSE). This is an independent project, not an official OpenAI product.
+
+Backend responsibilities, failure handling, and remaining limitations are documented in [Architecture](docs/architecture.md). See [backend hardening validation](docs/validation-2026-11-13.md) for the latest verification results and the observed intermittent weekly-reset test failure.

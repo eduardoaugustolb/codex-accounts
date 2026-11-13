@@ -1,24 +1,340 @@
 // @bun
+// src/codex-session.ts
+function object(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid daemon response.");
+  return value;
+}
+async function* loadedThreadIds(client) {
+  let cursor;
+  const cursors = new Set;
+  do {
+    const response = object(await client.call("thread/loaded/list", { cursor }));
+    if (!Array.isArray(response.data) || !response.data.every((id) => typeof id === "string"))
+      throw new Error("Invalid loaded thread list.");
+    for (const id of response.data)
+      yield id;
+    if (response.nextCursor != null && typeof response.nextCursor !== "string")
+      throw new Error("Invalid thread cursor.");
+    cursor = response.nextCursor;
+    if (cursor) {
+      if (cursors.has(cursor))
+        throw new Error("Repeated daemon pagination cursor.");
+      cursors.add(cursor);
+    }
+  } while (cursor);
+}
+async function readThread(client, threadId) {
+  const thread = object(object(await client.call("thread/read", { threadId })).thread);
+  const status = object(thread.status).type;
+  if (typeof status !== "string" || !["notLoaded", "idle", "systemError", "active"].includes(status))
+    throw new Error("Unsupported daemon thread status.");
+  if (thread.ephemeral !== undefined && typeof thread.ephemeral !== "boolean")
+    throw new Error("Invalid ephemeral thread flag.");
+  return { ephemeral: thread.ephemeral === true, active: status === "active" };
+}
+async function latestTurn(client, threadId) {
+  const response = object(await client.call("thread/turns/list", { threadId, limit: 1, sortDirection: "desc" }));
+  if (!Array.isArray(response.data))
+    throw new Error("Invalid daemon turn list.");
+  if (!response.data.length)
+    return;
+  const turn = object(response.data[0]);
+  if (typeof turn.id !== "string" || typeof turn.status !== "string")
+    throw new Error("Invalid daemon turn.");
+  return { id: turn.id, status: turn.status, error: turn.error };
+}
+
+// src/backend-state.ts
+import { rename, open, rm } from "fs/promises";
+import { dirname } from "path";
+
+// src/rpc.ts
+import WebSocket from "ws";
+
+class RpcError extends Error {
+  kind;
+  method;
+  constructor(kind, method) {
+    super(`RPC ${kind}: ${method}`);
+    this.kind = kind;
+    this.method = method;
+    this.name = "RpcError";
+  }
+}
+
+class RpcPeer {
+  seq = 0;
+  pending = new Map;
+  onNotification = () => {};
+  onRequest = async () => {
+    return;
+  };
+  disconnected() {
+    for (const p of this.pending.values()) {
+      clearTimeout(p.timer);
+      p.reject(new RpcError("outcomeUnknown", p.method));
+    }
+    this.pending.clear();
+  }
+  call(method, params = {}, timeout = 15000) {
+    const id = ++this.seq;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new RpcError("outcomeUnknown", method));
+      }, timeout);
+      this.pending.set(id, { resolve, reject, method, timer });
+      try {
+        this.send({ id, method, params });
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        reject(new RpcError("unavailable", method));
+      }
+    });
+  }
+  async initialize(experimental = false) {
+    await this.call("initialize", { clientInfo: { name: "codex_accounts", version: "0.2.0" }, capabilities: { experimentalApi: experimental } });
+    this.send({ method: "initialized", params: {} });
+  }
+  receive(msg) {
+    if (msg.method && msg.id !== undefined) {
+      this.onRequest(msg).then((result) => {
+        if (result !== undefined)
+          this.send({ id: msg.id, result });
+      }, () => this.send({ id: msg.id, error: { code: -32603, message: "Local account backend failed" } })).catch(() => {});
+    } else if (msg.method)
+      this.onNotification(msg);
+    else {
+      const p = this.pending.get(msg.id);
+      if (!p)
+        return;
+      clearTimeout(p.timer);
+      this.pending.delete(msg.id);
+      if (msg.error)
+        p.reject(new RpcError("rejected", p.method));
+      else
+        p.resolve(msg.result);
+    }
+  }
+}
+
+class Rpc extends RpcPeer {
+  proc;
+  done;
+  constructor(binary, args, env) {
+    super();
+    this.proc = Bun.spawn([binary, ...args], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
+    this.done = this.read().catch(() => {}).finally(() => this.disconnected());
+  }
+  send(message) {
+    this.proc.stdin.write(JSON.stringify(message) + `
+`);
+    this.proc.stdin.flush();
+  }
+  async read() {
+    let buffer = "";
+    for await (const chunk of this.proc.stdout.pipeThrough(new TextDecoderStream)) {
+      buffer += chunk;
+      let index;
+      while ((index = buffer.indexOf(`
+`)) >= 0) {
+        const line = buffer.slice(0, index);
+        buffer = buffer.slice(index + 1);
+        if (!line.trim())
+          continue;
+        this.receive(JSON.parse(line));
+      }
+    }
+  }
+  async close() {
+    this.proc.stdin.end();
+    const timer = setTimeout(() => this.proc.kill("SIGKILL"), 2000);
+    try {
+      await this.proc.exited;
+      await this.done;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}
+
+class UnixRpc extends RpcPeer {
+  socket;
+  ready;
+  constructor(socketPath) {
+    super();
+    this.socket = new WebSocket(`ws+unix:${socketPath}:/`, { handshakeTimeout: 3000, perMessageDeflate: false });
+    this.ready = new Promise((resolve, reject) => {
+      this.socket.once("open", resolve);
+      this.socket.once("error", () => reject(new Error("Daemon oficial indispon\xEDvel. Inicie codex app-server daemon start e reabra o Codex.")));
+    });
+    this.ready.catch(() => {});
+    this.socket.on("message", (raw) => {
+      try {
+        this.receive(JSON.parse(String(raw)));
+      } catch {
+        this.socket.terminate();
+      }
+    });
+    this.socket.on("close", () => this.disconnected());
+  }
+  get closed() {
+    return this.socket.readyState === WebSocket.CLOSED;
+  }
+  send(message) {
+    this.socket.send(JSON.stringify(message));
+  }
+  async initialize(experimental = false) {
+    await this.ready;
+    await super.initialize(experimental);
+  }
+  async close() {
+    this.socket.terminate();
+    this.disconnected();
+  }
+}
+
+// src/backend-state.ts
+async function atomicJson(path, value) {
+  const temp = `${path}.${crypto.randomUUID()}.tmp`;
+  try {
+    const file = await open(temp, "wx", 384);
+    try {
+      await file.writeFile(JSON.stringify(value));
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await rename(temp, path);
+    const directory = await open(dirname(path), "r");
+    try {
+      await directory.sync();
+    } finally {
+      await directory.close();
+    }
+  } finally {
+    await rm(temp, { force: true });
+  }
+}
+
+class ContinuationClaims {
+  path;
+  keys;
+  constructor(path, keys) {
+    this.path = path;
+    this.keys = keys;
+  }
+  static async load(path) {
+    let value;
+    try {
+      value = await Bun.file(path).json();
+    } catch (error) {
+      if (error.code !== "ENOENT")
+        throw new Error("Continuation claims unavailable; repair the state before enabling automation.");
+      value = [];
+    }
+    if (!Array.isArray(value) || !value.every((key) => typeof key === "string")) {
+      throw new Error("Invalid continuation claims; automation cannot start safely.");
+    }
+    return new ContinuationClaims(path, new Set(value));
+  }
+  has(key) {
+    return this.keys.has(key);
+  }
+  async claim(key) {
+    if (this.keys.has(key))
+      return;
+    const next = new Set(this.keys);
+    next.add(key);
+    await atomicJson(this.path, [...next]);
+    this.keys.add(key);
+  }
+}
+
+class BackendLifecycle {
+  work = new Set;
+  closing = false;
+  run(operation) {
+    if (this.closing)
+      return Promise.reject(new Error("Backend is shutting down."));
+    const task = Promise.resolve().then(operation);
+    this.work.add(task);
+    task.finally(() => this.work.delete(task)).catch(() => {});
+    return task;
+  }
+  async drain() {
+    this.closing = true;
+    while (this.work.size)
+      await Promise.allSettled([...this.work]);
+  }
+}
+
+class OperationCoordinator {
+  current;
+  get busy() {
+    return this.current !== undefined;
+  }
+  get operation() {
+    return this.current ?? null;
+  }
+  begin(operation) {
+    if (this.current)
+      throw new Error("Another account operation is in progress.");
+    this.current = operation;
+  }
+  end() {
+    this.current = undefined;
+  }
+}
+
+class BackendDiagnostics {
+  events = [];
+  record(operation, error) {
+    this.events.push({ operation, category: error instanceof RpcError ? error.kind : "localFailure", at: Date.now() });
+    if (this.events.length > 50)
+      this.events.shift();
+  }
+  snapshot() {
+    return this.events.map((event) => ({ ...event }));
+  }
+}
+
+// src/auth-transition.ts
+async function commitLogin(login, rollback, reconcile) {
+  try {
+    await login();
+  } catch (error) {
+    if (error instanceof RpcError && error.kind !== "outcomeUnknown") {
+      await rollback();
+      throw error;
+    }
+    const state = await reconcile().catch(() => "unknown");
+    if (state === "selected")
+      return;
+    if (state === "previous") {
+      await rollback();
+      throw error;
+    }
+    throw new Error("Authentication outcome unknown. Account mutations are blocked until reconciliation or daemon recovery.");
+  }
+}
+
 // src/auto-continue.ts
 function quotaFailure(turn) {
   return turn?.status === "failed" && /usage.?limit|usage_limit_reached|quota.{0,30}exceed/i.test(JSON.stringify(turn.error ?? ""));
 }
 async function interruptedTurns(client) {
   const interrupted = [];
-  let cursor;
-  do {
-    const loaded = await client.call("thread/loaded/list", { cursor });
-    for (const threadId of loaded.data) {
-      const { thread } = await client.call("thread/read", { threadId });
-      if (thread.ephemeral || thread.status.type === "active")
-        continue;
-      const turns = await client.call("thread/turns/list", { threadId, limit: 1, sortDirection: "desc" });
-      const last = turns.data?.[0];
-      if (thread.status.type !== "active" && quotaFailure(last))
-        interrupted.push({ threadId, turnId: last.id });
-    }
-    cursor = loaded.nextCursor ?? undefined;
-  } while (cursor);
+  for await (const threadId of loadedThreadIds(client)) {
+    const thread = await readThread(client, threadId);
+    if (thread.ephemeral || thread.active)
+      continue;
+    const last = await latestTurn(client, threadId);
+    if (last && quotaFailure(last))
+      interrupted.push({ threadId, turnId: last.id });
+  }
   return interrupted;
 }
 async function continueTurns(client, interrupted, enabled = () => true) {
@@ -26,12 +342,11 @@ async function continueTurns(client, interrupted, enabled = () => true) {
   for (const { threadId, turnId } of interrupted) {
     if (!enabled())
       break;
-    const { thread } = await client.call("thread/read", { threadId });
-    if (thread.ephemeral || thread.status.type === "active")
+    const thread = await readThread(client, threadId);
+    if (thread.ephemeral || thread.active)
       continue;
-    const turns = await client.call("thread/turns/list", { threadId, limit: 1, sortDirection: "desc" });
-    const last = turns.data?.[0];
-    if (!enabled() || thread.status.type === "active" || last?.id !== turnId || !quotaFailure(last))
+    const last = await latestTurn(client, threadId);
+    if (!enabled() || thread.active || last?.id !== turnId || !quotaFailure(last))
       continue;
     await client.call("turn/start", { threadId, input: [{ type: "text", text: "continue" }] });
     count++;
@@ -214,10 +529,12 @@ function photoType(bytes) {
 }
 
 // src/native-backend.ts
-import { chmod as chmod3, rename as rename2, rm as rm2, writeFile as writeFile2 } from "fs/promises";
+import { chmod as chmod3, rm as rm3, writeFile as writeFile2 } from "fs/promises";
 
 // src/store.ts
-import { mkdir, chmod, readFile, rename, writeFile, readdir, rm, lstat } from "fs/promises";
+import { Database } from "bun:sqlite";
+import { constants } from "fs";
+import { mkdir, chmod, readFile, rename as rename2, writeFile, readdir, rm as rm2, lstat, open as open2 } from "fs/promises";
 import { join, resolve } from "path";
 import { homedir } from "os";
 
@@ -241,15 +558,41 @@ class Store {
   }
   async lock() {
     await this.init();
-    const path = join(this.root, "lock");
-    try {
-      await mkdir(path, { mode: 448 });
-    } catch {
-      throw new Error(`Outro codex-accounts est\xE1 usando estes dados. Se houve uma queda, confirme que n\xE3o est\xE1 rodando antes de remover ${path}.`);
+    if (await Bun.file(join(this.root, "lock", "pid")).exists() || await lstat(join(this.root, "lock")).then(() => true, (error) => {
+      if (error.code === "ENOENT")
+        return false;
+      throw error;
+    }))
+      throw new Error("Legacy vault lock detected. Stop all older clients before removing the abandoned lock directory.");
+    const path = join(this.root, "mutation-lock.sqlite");
+    const file = await open2(path, constants.O_CREAT | constants.O_RDWR | constants.O_NOFOLLOW, 384);
+    await file.close();
+    const entry = await lstat(path);
+    if (!entry.isFile() || entry.isSymbolicLink() || process.getuid && entry.uid !== process.getuid()) {
+      throw new Error("Unsafe vault lock file.");
     }
-    await writeFile(join(path, "pid"), String(process.pid), { mode: 384 });
+    await chmod(path, 384);
+    const database = new Database(path);
+    try {
+      database.exec("PRAGMA busy_timeout = 0");
+      database.exec("BEGIN IMMEDIATE");
+    } catch (error) {
+      database.close();
+      if (error.code === "SQLITE_BUSY") {
+        throw new Error("Outro codex-accounts est\xE1 usando estes dados. Tente novamente ap\xF3s a opera\xE7\xE3o atual.");
+      }
+      throw error;
+    }
+    let released = false;
     return async () => {
-      await rm(path, { recursive: true });
+      if (released)
+        return;
+      released = true;
+      try {
+        database.exec("ROLLBACK");
+      } finally {
+        database.close();
+      }
     };
   }
   async names() {
@@ -274,7 +617,7 @@ class Store {
     });
     if (!entry.isDirectory() || entry.isSymbolicLink())
       throw new Error("Diret\xF3rio de conta inv\xE1lido.");
-    await rm(home, { recursive: true });
+    await rm2(home, { recursive: true });
   }
   async auth(home) {
     const path = join(home, "auth.json");
@@ -297,143 +640,7 @@ class Store {
     await chmod(home, 448);
     const temp = join(home, `.auth-${crypto.randomUUID()}.tmp`);
     await writeFile(temp, raw, { mode: 384, flag: "wx" });
-    await rename(temp, join(home, "auth.json"));
-  }
-}
-
-// src/rpc.ts
-import WebSocket from "ws";
-
-class RpcPeer {
-  seq = 0;
-  pending = new Map;
-  onNotification = () => {};
-  onRequest = async () => {
-    return;
-  };
-  disconnected() {
-    for (const p of this.pending.values()) {
-      clearTimeout(p.timer);
-      p.reject(new Error("Conex\xE3o com Codex encerrada."));
-    }
-    this.pending.clear();
-  }
-  call(method, params = {}, timeout = 15000) {
-    const id = ++this.seq;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error(`Timeout RPC: ${method}`));
-      }, timeout);
-      this.pending.set(id, { resolve, reject, method, timer });
-      try {
-        this.send({ id, method, params });
-      } catch {
-        clearTimeout(timer);
-        this.pending.delete(id);
-        reject(new Error("Conex\xE3o com Codex indispon\xEDvel."));
-      }
-    });
-  }
-  async initialize(experimental = false) {
-    await this.call("initialize", { clientInfo: { name: "codex_accounts", version: "0.2.0" }, capabilities: { experimentalApi: experimental } });
-    this.send({ method: "initialized", params: {} });
-  }
-  receive(msg) {
-    if (msg.method && msg.id !== undefined) {
-      this.onRequest(msg).then((result) => {
-        if (result !== undefined)
-          this.send({ id: msg.id, result });
-      }, () => this.send({ id: msg.id, error: { code: -32603, message: "Local account backend failed" } })).catch(() => {});
-    } else if (msg.method)
-      this.onNotification(msg);
-    else {
-      const p = this.pending.get(msg.id);
-      if (!p)
-        return;
-      clearTimeout(p.timer);
-      this.pending.delete(msg.id);
-      if (msg.error)
-        p.reject(new Error(`RPC rejeitada: ${p.method} (${msg.error.code}).`));
-      else
-        p.resolve(msg.result);
-    }
-  }
-}
-
-class Rpc extends RpcPeer {
-  proc;
-  done;
-  constructor(binary, args, env) {
-    super();
-    this.proc = Bun.spawn([binary, ...args], { env, stdin: "pipe", stdout: "pipe", stderr: "ignore" });
-    this.done = this.read().catch(() => {}).finally(() => this.disconnected());
-  }
-  send(message) {
-    this.proc.stdin.write(JSON.stringify(message) + `
-`);
-    this.proc.stdin.flush();
-  }
-  async read() {
-    let buffer = "";
-    for await (const chunk of this.proc.stdout.pipeThrough(new TextDecoderStream)) {
-      buffer += chunk;
-      let index;
-      while ((index = buffer.indexOf(`
-`)) >= 0) {
-        const line = buffer.slice(0, index);
-        buffer = buffer.slice(index + 1);
-        if (!line.trim())
-          continue;
-        this.receive(JSON.parse(line));
-      }
-    }
-  }
-  async close() {
-    this.proc.stdin.end();
-    const timer = setTimeout(() => this.proc.kill("SIGKILL"), 2000);
-    try {
-      await this.proc.exited;
-      await this.done;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-}
-
-class UnixRpc extends RpcPeer {
-  socket;
-  ready;
-  constructor(socketPath) {
-    super();
-    this.socket = new WebSocket(`ws+unix:${socketPath}:/`, { handshakeTimeout: 3000, perMessageDeflate: false });
-    this.ready = new Promise((resolve, reject) => {
-      this.socket.once("open", resolve);
-      this.socket.once("error", () => reject(new Error("Daemon oficial indispon\xEDvel. Inicie codex app-server daemon start e reabra o Codex.")));
-    });
-    this.ready.catch(() => {});
-    this.socket.on("message", (raw) => {
-      try {
-        this.receive(JSON.parse(String(raw)));
-      } catch {
-        this.socket.terminate();
-      }
-    });
-    this.socket.on("close", () => this.disconnected());
-  }
-  get closed() {
-    return this.socket.readyState === WebSocket.CLOSED;
-  }
-  send(message) {
-    this.socket.send(JSON.stringify(message));
-  }
-  async initialize(experimental = false) {
-    await this.ready;
-    await super.initialize(experimental);
-  }
-  async close() {
-    this.socket.terminate();
-    this.disconnected();
+    await rename2(temp, join(home, "auth.json"));
   }
 }
 
@@ -474,15 +681,20 @@ function identity(raw) {
 
 // src/native-backend.ts
 async function serveNative() {
+  const lifecycle = new BackendLifecycle;
+  let authUncertain = false;
+  const diagnostics = new BackendDiagnostics;
   await privateServiceDir();
   const store = new Store;
   await store.init();
+  const transitionPath = join3(store.root, "auth-transition.json");
+  authUncertain = await Bun.file(transitionPath).exists();
   let rpc;
   let active;
   let pending;
-  let lastMessage = "Contas do Codex";
+  let lastMessage = authUncertain ? "Authentication outcome unknown. Use logout to reconcile the shared session." : "Contas do Codex";
   let connection;
-  let switching = false;
+  const operations = new OperationCoordinator;
   const usage = new Map;
   const settingsPath = join3(store.root, "settings.json");
   const settings = await Bun.file(settingsPath).json().catch(() => ({}));
@@ -490,13 +702,7 @@ async function serveNative() {
   let autoContinue = settings.autoContinue === true;
   let resumeAfterReset = settings.resumeAfterReset === true;
   const claimsPath = join3(store.root, "reset-continuation-claims.json");
-  const resetClaims = new Set(await Bun.file(claimsPath).json().catch(() => []));
-  async function claimResetTurn(key) {
-    resetClaims.add(key);
-    const temp = `${claimsPath}.tmp`;
-    await writeFile2(temp, JSON.stringify([...resetClaims]), { mode: 384 });
-    await rename2(temp, claimsPath);
-  }
+  const resetClaims = await ContinuationClaims.load(claimsPath);
   let monitoring = false;
   let monitorTimer;
   let lastExternalRead = 0;
@@ -530,11 +736,11 @@ async function serveNative() {
     if (!force && !externalDirty && Date.now() - lastExternalRead < 30000)
       return;
     refreshWork = (async () => {
-      if (switching)
+      if (operations.busy)
         return;
       externalDirty = false;
       for (const name of await store.names()) {
-        if (switching || signal?.aborted) {
+        if (operations.busy || signal?.aborted) {
           externalDirty = true;
           return;
         }
@@ -548,12 +754,15 @@ async function serveNative() {
     return refreshWork;
   }
   function scheduleMonitor(delay = 300) {
+    if (lifecycle.closing || authUncertain)
+      return;
     externalDirty = true;
     if (monitorTimer)
       return;
     monitorTimer = setTimeout(() => {
       monitorTimer = undefined;
-      monitor().catch(() => {
+      lifecycle.run(monitor).catch((error) => {
+        diagnostics.record("monitor", error);
         externalDirty = true;
         lastMessage = "N\xE3o foi poss\xEDvel verificar a troca autom\xE1tica. Tente atualizar os limites.";
         publish();
@@ -565,7 +774,7 @@ async function serveNative() {
       return;
     monitoring = true;
     try {
-      if (switching) {
+      if (operations.busy) {
         scheduleMonitor(1500);
         return;
       }
@@ -584,7 +793,7 @@ async function serveNative() {
           const key = JSON.stringify([turn.threadId, turn.turnId]);
           if (resetClaims.has(key))
             continue;
-          await claimResetTurn(key);
+          await resetClaims.claim(key);
           try {
             const count = await continueTurns(client, [turn], () => resumeAfterReset);
             if (count)
@@ -646,6 +855,8 @@ async function serveNative() {
           publish();
           return;
         } catch (e) {
+          if (authUncertain)
+            throw e;
           switchError = e instanceof Error ? e.message : "Troca n\xE3o conclu\xEDda.";
         }
       }
@@ -658,11 +869,13 @@ async function serveNative() {
   }
   async function readUsage(name) {
     store.account(name);
-    if (switching)
+    if (authUncertain)
+      throw new Error("Authentication outcome unknown. Use logout to reconcile the shared session before further account operations.");
+    if (operations.busy)
       throw new Error("Troca ou renova\xE7\xE3o em andamento. Tente novamente.");
-    switching = true;
+    operations.begin("quota");
     const unlock = await store.lock().catch((e) => {
-      switching = false;
+      operations.end();
       throw e;
     });
     let helper;
@@ -695,12 +908,19 @@ async function serveNative() {
       if (result.accountId && result.accountId !== selected.accountId)
         throw new Error("Identidade dos limites divergente.");
       usage.set(name, parseUsage(result));
-    } catch {
+    } catch (error) {
+      diagnostics.record("quota", error);
       usage.set(name, { fiveHour: null, weekly: null, updatedAt: Date.now(), unavailable: true });
     } finally {
-      await helper?.close();
-      switching = false;
-      await unlock();
+      try {
+        await helper?.close();
+      } finally {
+        try {
+          await unlock();
+        } finally {
+          operations.end();
+        }
+      }
     }
   }
   const token = crypto.randomUUID() + crypto.randomUUID();
@@ -723,27 +943,29 @@ async function serveNative() {
       next.onRequest = async (msg) => {
         if (msg.method !== "account/chatgptAuthTokens/refresh")
           return;
-        if (!active || switching)
-          throw new Error("Refresh indispon\xEDvel.");
-        switching = true;
-        const unlock = await store.lock().catch((e) => {
-          switching = false;
-          throw e;
+        return lifecycle.run(async () => {
+          if (authUncertain || lifecycle.closing || !active || operations.busy)
+            throw new Error("Refresh indispon\xEDvel.");
+          operations.begin("refresh");
+          const unlock = await store.lock().catch((e) => {
+            operations.end();
+            throw e;
+          });
+          try {
+            const previous = identity(await store.auth(store.account(active)));
+            if (msg.params.previousAccountId && previous.accountId !== msg.params.previousAccountId)
+              throw new Error("Conta mudou durante refresh.");
+            const raw = await refresh(active);
+            const fresh = identity(raw);
+            if (fresh.accountId !== previous.accountId)
+              throw new Error("Refresh mudou a identidade.");
+            await store.saveAuth(codexHome, raw);
+            return { accessToken: fresh.accessToken, chatgptAccountId: fresh.accountId, chatgptPlanType: fresh.plan };
+          } finally {
+            operations.end();
+            await unlock();
+          }
         });
-        try {
-          const previous = identity(await store.auth(store.account(active)));
-          if (msg.params.previousAccountId && previous.accountId !== msg.params.previousAccountId)
-            throw new Error("Conta mudou durante refresh.");
-          const raw = await refresh(active);
-          const fresh = identity(raw);
-          if (fresh.accountId !== previous.accountId)
-            throw new Error("Refresh mudou a identidade.");
-          await store.saveAuth(codexHome, raw);
-          return { accessToken: fresh.accessToken, chatgptAccountId: fresh.accountId, chatgptPlanType: fresh.plan };
-        } finally {
-          switching = false;
-          await unlock();
-        }
       };
       try {
         await next.initialize(true);
@@ -779,23 +1001,42 @@ async function serveNative() {
     return raw;
   }
   async function ensureIdle(client) {
-    let cursor;
-    do {
-      const loaded = await client.call("thread/loaded/list", { cursor });
-      for (const id of loaded.data) {
-        const result = await client.call("thread/read", { threadId: id });
-        if (result.thread.status.type === "active")
-          throw new Error("Aguarde todos os turnos terminarem antes de trocar a conta.");
-      }
-      cursor = loaded.nextCursor ?? undefined;
-    } while (cursor);
+    for await (const id of loadedThreadIds(client)) {
+      if ((await readThread(client, id)).active)
+        throw new Error("Aguarde todos os turnos terminarem antes de trocar a conta.");
+    }
+  }
+  async function applyLogin(client, nextRaw, previousRaw) {
+    const next = identity(nextRaw);
+    await atomicJson(transitionPath, { accountId: next.accountId, startedAt: Date.now() });
+    authUncertain = true;
+    await store.saveAuth(codexHome, nextRaw);
+    await commitLogin(() => client.call("account/login/start", { type: "chatgptAuthTokens", accessToken: next.accessToken, chatgptAccountId: next.accountId, chatgptPlanType: next.plan }), async () => {
+      if (previousRaw)
+        await store.saveAuth(codexHome, previousRaw);
+      else
+        await rm3(join3(codexHome, "auth.json"), { force: true });
+      await rm3(transitionPath, { force: true });
+      authUncertain = false;
+    }, async () => {
+      const result = await client.call("account/rateLimits/read", {}, 8000);
+      if (result.accountId === next.accountId)
+        return "selected";
+      if (previousRaw && result.accountId === identity(previousRaw).accountId)
+        return "previous";
+      return "unknown";
+    });
+    await rm3(transitionPath, { force: true });
+    authUncertain = false;
   }
   async function switchAccount(name) {
-    if (switching)
+    if (authUncertain)
+      throw new Error("Authentication outcome unknown. Use logout to reconcile the shared session before further account operations.");
+    if (operations.busy)
       throw new Error("Troca j\xE1 em andamento.");
-    switching = true;
+    operations.begin("switch");
     const unlock = await store.lock().catch((e) => {
-      switching = false;
+      operations.end();
       throw e;
     });
     try {
@@ -810,7 +1051,6 @@ async function serveNative() {
       let nextRaw = await store.auth(store.account(name));
       if (identity(nextRaw).expires < Date.now() / 1000 + 120)
         nextRaw = await refresh(name);
-      const next = identity(nextRaw);
       const previousRaw = account.account ? await store.auth(codexHome) : undefined;
       if (previousRaw) {
         const previous = identity(previousRaw);
@@ -822,31 +1062,25 @@ async function serveNative() {
           previousName = `previous-${Date.now()}`;
         await store.saveAuth(store.account(previousName), previousRaw);
       }
-      await store.saveAuth(codexHome, nextRaw);
-      try {
-        await client.call("account/login/start", { type: "chatgptAuthTokens", accessToken: next.accessToken, chatgptAccountId: next.accountId, chatgptPlanType: next.plan });
-      } catch (e) {
-        if (previousRaw)
-          await store.saveAuth(codexHome, previousRaw);
-        else
-          await rm2(join3(codexHome, "auth.json"), { force: true });
-        throw e;
-      }
+      await ensureIdle(client);
+      await applyLogin(client, nextRaw, previousRaw);
       active = name;
       lastMessage = `Conta alterada para ${name}. Volte ao Codex e envie continue. O hist\xF3rico permanece na mesma conversa.`;
       pending = undefined;
     } finally {
-      switching = false;
+      operations.end();
       await unlock();
     }
   }
   async function removeAccount(name) {
     const home = store.account(name);
-    if (switching)
+    if (authUncertain)
+      throw new Error("Authentication outcome unknown. Use logout to reconcile the shared session before further account operations.");
+    if (operations.busy)
       throw new Error("Troca ou renova\xE7\xE3o em andamento. Tente novamente.");
-    switching = true;
+    operations.begin("remove");
     const unlock = await store.lock().catch((e) => {
-      switching = false;
+      operations.end();
       throw e;
     });
     try {
@@ -864,29 +1098,44 @@ async function serveNative() {
       usage.delete(name);
       lastMessage = `Conta ${name} removida deste dispositivo. Para us\xE1-la novamente, fa\xE7a um novo cadastro.`;
     } finally {
-      switching = false;
+      operations.end();
       await unlock();
     }
   }
   async function logout() {
-    if (switching)
+    if (operations.busy)
       throw new Error("Troca j\xE1 em andamento.");
-    switching = true;
+    operations.begin("logout");
     const unlock = await store.lock().catch((e) => {
-      switching = false;
+      operations.end();
       throw e;
     });
     try {
       const client = await connect();
       await ensureIdle(client);
+      await atomicJson(transitionPath, { operation: "logout", startedAt: Date.now() });
+      authUncertain = true;
       await client.call("account/logout");
+      await rm3(transitionPath, { force: true });
+      authUncertain = false;
       active = undefined;
       pending = undefined;
       lastMessage = "Logout conclu\xEDdo. As contas cadastradas continuam salvas; selecione uma para entrar novamente.";
     } finally {
-      switching = false;
+      operations.end();
       await unlock();
     }
+  }
+  async function saveSettings(next) {
+    const unlock = await store.lock();
+    try {
+      await atomicJson(settingsPath, next);
+      ({ autoSwitch, autoContinue, resumeAfterReset } = next);
+    } finally {
+      await unlock();
+    }
+    if (autoSwitch || resumeAfterReset)
+      scheduleMonitor();
   }
   function openPanel() {
     if (process.env.CODEX_ACCOUNTS_NO_BROWSER === "1")
@@ -924,219 +1173,211 @@ async function serveNative() {
     return renderAccountPanel(accounts, token, csrf, lastMessage, Boolean(pending), autoSwitch, autoContinue, resumeAfterReset);
   }
   const web = Bun.serve({ hostname: "127.0.0.1", port: 0, maxRequestBodySize: 3 * 1024 * 1024, async fetch(req) {
-    const url = new URL(req.url);
-    const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
-    if (url.hostname !== "127.0.0.1" || !url.pathname.startsWith(`/${token}/`))
-      return new Response("Not found", { status: 404 });
-    if (req.method === "GET" && url.pathname === `/${token}/events`) {
-      let listener;
-      const stream = new ReadableStream({
-        start(controller) {
-          listener = controller;
-          listeners.add(controller);
-          controller.enqueue(encoder.encode(`data: connected
+    if (lifecycle.closing)
+      return new Response("Shutting down", { status: 503 });
+    return lifecycle.run(async () => {
+      const url = new URL(req.url);
+      const headers = { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "same-origin", "x-frame-options": "DENY", "content-security-policy": "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self' https://*.googleusercontent.com https://cdn.auth0.com https://*.oaistatic.com https://cdn.openai.com; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'" };
+      if (url.hostname !== "127.0.0.1" || !url.pathname.startsWith(`/${token}/`))
+        return new Response("Not found", { status: 404 });
+      if (req.method === "GET" && url.pathname === `/${token}/events`) {
+        let listener;
+        const stream = new ReadableStream({
+          start(controller) {
+            listener = controller;
+            listeners.add(controller);
+            controller.enqueue(encoder.encode(`data: connected
 
 `));
-        },
-        cancel() {
+          },
+          cancel() {
+            listeners.delete(listener);
+          }
+        });
+        req.signal.addEventListener("abort", () => {
           listeners.delete(listener);
-        }
-      });
-      req.signal.addEventListener("abort", () => {
-        listeners.delete(listener);
+          try {
+            listener.close();
+          } catch {}
+        }, { once: true });
+        return new Response(stream, { headers: { ...headers, "content-type": "text/event-stream", connection: "keep-alive" } });
+      }
+      if (req.method === "GET" && url.pathname === `/${token}/live.js`)
+        return new Response(panelLiveScript, { headers: { ...headers, "content-type": "text/javascript; charset=utf-8" } });
+      if (req.method === "GET" && url.pathname === `/${token}/live`) {
+        lifecycle.run(() => refreshAll(url.searchParams.get("fresh") === "1")).catch((error) => diagnostics.record("panel", error));
+        return new Response(await panel(), { headers });
+      }
+      if (req.method === "GET" && url.pathname === `/${token}/photo`) {
         try {
-          listener.close();
-        } catch {}
-      }, { once: true });
-      return new Response(stream, { headers: { ...headers, "content-type": "text/event-stream", connection: "keep-alive" } });
-    }
-    if (req.method === "GET" && url.pathname === `/${token}/live.js`)
-      return new Response(panelLiveScript, { headers: { ...headers, "content-type": "text/javascript; charset=utf-8" } });
-    if (req.method === "GET" && url.pathname === `/${token}/live`) {
-      await refreshAll(url.searchParams.get("fresh") === "1", req.signal);
-      return new Response(await panel(), { headers });
-    }
-    if (req.method === "GET" && url.pathname === `/${token}/photo`) {
-      try {
-        const file = Bun.file(join3(store.account(url.searchParams.get("account") ?? ""), "profile-image"));
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const type = photoType(bytes);
-        if (!type)
-          throw new Error;
-        return new Response(bytes, { headers: { ...headers, "content-type": type, "x-content-type-options": "nosniff" } });
-      } catch {
-        return new Response("Not found", { status: 404 });
-      }
-    }
-    if (req.method === "POST") {
-      const origin = req.headers.get("origin");
-      if (origin && origin !== url.origin)
-        return new Response("Forbidden", { status: 403 });
-      const form = await req.formData();
-      if (form.get("csrf") !== csrf)
-        return new Response("Forbidden", { status: 403 });
-      try {
-        if (url.pathname === `/${token}/settings`) {
-          const unlock = await store.lock();
-          try {
-            const enabled = form.get("autoSwitch") === "on";
-            const temp = `${settingsPath}.tmp`;
-            await writeFile2(temp, JSON.stringify({ autoSwitch: enabled, autoContinue: form.get("autoContinue") === "on", resumeAfterReset: form.get("resumeAfterReset") === "on" }), { mode: 384 });
-            await rename2(temp, settingsPath);
-            resumeAfterReset = form.get("resumeAfterReset") === "on";
-            autoSwitch = enabled;
-            autoContinue = form.get("autoContinue") === "on";
-          } finally {
-            await unlock();
-          }
-          lastMessage = autoSwitch ? "Troca autom\xE1tica ativada. A troca afeta todas as conversas conectadas." : "Troca autom\xE1tica desativada.";
-          if (autoSwitch || resumeAfterReset)
-            scheduleMonitor();
-        } else if (url.pathname === `/${token}/switch`)
-          await switchAccount(String(form.get("account")));
-        else if (url.pathname === `/${token}/logout`)
-          await logout();
-        else if (url.pathname === `/${token}/remove`)
-          await removeAccount(String(form.get("account")));
-        else if (url.pathname === `/${token}/limits`)
-          await readUsage(String(form.get("account")));
-        else if (url.pathname === `/${token}/photo`) {
-          const name = String(form.get("account"));
-          const home = store.account(name);
-          const file = form.get("photo");
-          if (!(file instanceof File) || file.size > 2 * 1024 * 1024 || file.size === 0)
-            throw new Error("Escolha uma foto PNG, JPEG ou WebP de at\xE9 2 MB.");
+          const file = Bun.file(join3(store.account(url.searchParams.get("account") ?? ""), "profile-image"));
           const bytes = new Uint8Array(await file.arrayBuffer());
-          if (!photoType(bytes))
-            throw new Error("Formato inv\xE1lido. Use PNG, JPEG ou WebP.");
-          const unlock = await store.lock();
-          try {
-            if (!(await store.names()).includes(name))
-              throw new Error("Conta n\xE3o cadastrada.");
-            await writeFile2(join3(home, "profile-image"), bytes, { mode: 384 });
-          } finally {
-            await unlock();
-          }
-          lastMessage = `Foto de ${name} atualizada neste dispositivo.`;
-        } else if (url.pathname === `/${token}/cancel`) {
-          pending = undefined;
-          lastMessage = "Troca cancelada. A conta atual foi mantida.";
-        } else
+          const type = photoType(bytes);
+          if (!type)
+            throw new Error;
+          return new Response(bytes, { headers: { ...headers, "content-type": type, "x-content-type-options": "nosniff" } });
+        } catch {
           return new Response("Not found", { status: 404 });
-      } catch (e) {
-        lastMessage = e instanceof Error ? e.message : "Troca n\xE3o conclu\xEDda.";
+        }
       }
-      publish();
-    } else if (req.method !== "GET")
-      return new Response("Method not allowed", { status: 405 });
-    return new Response(await panel(), { headers });
+      if (req.method === "POST") {
+        const origin = req.headers.get("origin");
+        if (origin && origin !== url.origin)
+          return new Response("Forbidden", { status: 403 });
+        const form = await req.formData();
+        if (form.get("csrf") !== csrf)
+          return new Response("Forbidden", { status: 403 });
+        try {
+          if (url.pathname === `/${token}/settings`) {
+            await saveSettings({ autoSwitch: form.get("autoSwitch") === "on", autoContinue: form.get("autoContinue") === "on", resumeAfterReset: form.get("resumeAfterReset") === "on" });
+            lastMessage = autoSwitch ? "Troca autom\xE1tica ativada. A troca afeta todas as conversas conectadas." : "Troca autom\xE1tica desativada.";
+            if (autoSwitch || resumeAfterReset)
+              scheduleMonitor();
+          } else if (url.pathname === `/${token}/switch`)
+            await switchAccount(String(form.get("account")));
+          else if (url.pathname === `/${token}/logout`)
+            await logout();
+          else if (url.pathname === `/${token}/remove`)
+            await removeAccount(String(form.get("account")));
+          else if (url.pathname === `/${token}/limits`)
+            await readUsage(String(form.get("account")));
+          else if (url.pathname === `/${token}/photo`) {
+            const name = String(form.get("account"));
+            const home = store.account(name);
+            const file = form.get("photo");
+            if (!(file instanceof File) || file.size > 2 * 1024 * 1024 || file.size === 0)
+              throw new Error("Escolha uma foto PNG, JPEG ou WebP de at\xE9 2 MB.");
+            const bytes = new Uint8Array(await file.arrayBuffer());
+            if (!photoType(bytes))
+              throw new Error("Formato inv\xE1lido. Use PNG, JPEG ou WebP.");
+            const unlock = await store.lock();
+            try {
+              if (!(await store.names()).includes(name))
+                throw new Error("Conta n\xE3o cadastrada.");
+              await writeFile2(join3(home, "profile-image"), bytes, { mode: 384 });
+            } finally {
+              await unlock();
+            }
+            lastMessage = `Foto de ${name} atualizada neste dispositivo.`;
+          } else if (url.pathname === `/${token}/cancel`) {
+            pending = undefined;
+            lastMessage = "Troca cancelada. A conta atual foi mantida.";
+          } else
+            return new Response("Not found", { status: 404 });
+        } catch (e) {
+          lastMessage = e instanceof Error ? e.message : "Troca n\xE3o conclu\xEDda.";
+        }
+        publish();
+      } else if (req.method !== "GET")
+        return new Response("Method not allowed", { status: 405 });
+      return new Response(await panel(), { headers });
+    });
   } });
   const panelUrl = `http://127.0.0.1:${web.port}/${token}/`;
   let ipc;
   try {
     ipc = Bun.serve({ unix: socketPath, async fetch(req) {
-      if (req.method === "GET") {
-        const current = await currentName();
-        return Response.json({
-          url: panelUrl,
-          active: active ?? null,
-          pending: pending ?? null,
-          switching,
-          autoSwitch,
-          autoContinue,
-          resumeAfterReset,
-          message: lastMessage,
-          accounts: (await store.names()).map((name) => ({ name, current: name === current, usage: usage.get(name) }))
-        });
-      }
-      if (req.method !== "POST")
-        return new Response("Method not allowed", { status: 405 });
-      const event = await req.json();
-      if (["usage", "switch", "resume-after-reset", "settings"].includes(event.action)) {
-        try {
-          if (event.action === "usage") {
-            const names = event.account === undefined ? await store.names() : [String(event.account)];
-            const saved = await store.names();
-            for (const name of names) {
-              if (!saved.includes(name))
-                throw new Error("Account not registered.");
-              await readUsage(name);
-            }
-            const current = await currentName();
-            return Response.json({ accounts: names.map((name) => ({ name, current: name === current, usage: usage.get(name) })) });
-          }
-          if (event.action === "switch")
-            await switchAccount(String(event.account));
-          else {
-            const next = { autoSwitch, autoContinue, resumeAfterReset };
-            if (event.action === "resume-after-reset") {
-              if (typeof event.enabled !== "boolean")
-                throw new Error("Expected enabled boolean.");
-              next.resumeAfterReset = event.enabled;
-            } else {
-              for (const key of ["autoSwitch", "autoContinue", "resumeAfterReset"]) {
-                if (event[key] === undefined)
-                  continue;
-                if (typeof event[key] !== "boolean")
-                  throw new Error(`Expected ${key} boolean.`);
-                next[key] = event[key];
+      if (lifecycle.closing)
+        return new Response("Shutting down", { status: 503 });
+      return lifecycle.run(async () => {
+        if (req.method === "GET") {
+          const current = await currentName();
+          return Response.json({
+            url: panelUrl,
+            active: active ?? null,
+            pending: pending ?? null,
+            switching: operations.busy,
+            operation: operations.operation,
+            authUncertain,
+            diagnostics: diagnostics.snapshot(),
+            autoSwitch,
+            autoContinue,
+            resumeAfterReset,
+            message: lastMessage,
+            accounts: (await store.names()).map((name) => ({ name, current: name === current, usage: usage.get(name) }))
+          });
+        }
+        if (req.method !== "POST")
+          return new Response("Method not allowed", { status: 405 });
+        const event = await req.json();
+        if (["usage", "switch", "resume-after-reset", "settings"].includes(event.action)) {
+          try {
+            if (event.action === "usage") {
+              const names = event.account === undefined ? await store.names() : [String(event.account)];
+              const saved = await store.names();
+              for (const name of names) {
+                if (!saved.includes(name))
+                  throw new Error("Account not registered.");
+                await readUsage(name);
               }
+              const current = await currentName();
+              return Response.json({ accounts: names.map((name) => ({ name, current: name === current, usage: usage.get(name) })) });
             }
-            const unlock = await store.lock();
-            try {
-              const temp = `${settingsPath}.tmp`;
-              await writeFile2(temp, JSON.stringify(next), { mode: 384 });
-              await rename2(temp, settingsPath);
-              ({ autoSwitch, autoContinue, resumeAfterReset } = next);
-            } finally {
-              await unlock();
+            if (event.action === "switch")
+              await switchAccount(String(event.account));
+            else {
+              const next = { autoSwitch, autoContinue, resumeAfterReset };
+              if (event.action === "resume-after-reset") {
+                if (typeof event.enabled !== "boolean")
+                  throw new Error("Expected enabled boolean.");
+                next.resumeAfterReset = event.enabled;
+              } else {
+                for (const key of ["autoSwitch", "autoContinue", "resumeAfterReset"]) {
+                  if (event[key] === undefined)
+                    continue;
+                  if (typeof event[key] !== "boolean")
+                    throw new Error(`Expected ${key} boolean.`);
+                  next[key] = event[key];
+                }
+              }
+              await saveSettings(next);
+              lastMessage = event.action === "settings" ? "Preferences saved." : `Quota-reset continuation ${resumeAfterReset ? "enabled" : "disabled"}.`;
+              if (autoSwitch || resumeAfterReset)
+                scheduleMonitor();
             }
-            lastMessage = event.action === "settings" ? "Preferences saved." : `Quota-reset continuation ${resumeAfterReset ? "enabled" : "disabled"}.`;
-            if (autoSwitch || resumeAfterReset)
-              scheduleMonitor();
+            publish();
+            return Response.json({ message: lastMessage });
+          } catch (e) {
+            return Response.json({ error: e instanceof Error ? e.message : "Operation failed." }, { status: 409 });
           }
+        }
+        if (event.action === "remove") {
+          try {
+            await removeAccount(String(event.account));
+            return Response.json({ message: lastMessage });
+          } catch (e) {
+            return Response.json({ error: e instanceof Error ? e.message : "Remo\xE7\xE3o n\xE3o conclu\xEDda." }, { status: 409 });
+          }
+        }
+        if (event.action === "logout") {
+          try {
+            await logout();
+            return Response.json({ message: lastMessage });
+          } catch (e) {
+            return Response.json({ error: e instanceof Error ? e.message : "Logout n\xE3o conclu\xEDdo." }, { status: 409 });
+          }
+        }
+        if (event.action === "shutdown") {
+          setTimeout(() => {
+            close();
+          }, 100);
+          return Response.json({ stopped: true });
+        }
+        if (["SessionStart", "PostModelRequest", "Stop", "Interrupt"].includes(event.hook_event_name)) {
+          externalDirty = true;
           publish();
-          return Response.json({ message: lastMessage });
-        } catch (e) {
-          return Response.json({ error: e instanceof Error ? e.message : "Operation failed." }, { status: 409 });
+          if (event.hook_event_name === "PostModelRequest" && event.status === "failed" && /usage.?limit|usage_limit_reached|quota.{0,30}exceed/i.test(event.error ?? "")) {
+            const alreadyPending = Boolean(pending);
+            pending = { threadId: event.session_id, reason: "usageLimitExceeded" };
+            if (!autoSwitch && !resumeAfterReset && !alreadyPending)
+              openPanel();
+          }
+          if (autoSwitch || resumeAfterReset || event.hook_event_name === "SessionStart")
+            scheduleMonitor();
+          connect().catch(() => {});
         }
-      }
-      if (event.action === "remove") {
-        try {
-          await removeAccount(String(event.account));
-          return Response.json({ message: lastMessage });
-        } catch (e) {
-          return Response.json({ error: e instanceof Error ? e.message : "Remo\xE7\xE3o n\xE3o conclu\xEDda." }, { status: 409 });
-        }
-      }
-      if (event.action === "logout") {
-        try {
-          await logout();
-          return Response.json({ message: lastMessage });
-        } catch (e) {
-          return Response.json({ error: e instanceof Error ? e.message : "Logout n\xE3o conclu\xEDdo." }, { status: 409 });
-        }
-      }
-      if (event.action === "shutdown") {
-        setTimeout(() => {
-          close();
-        }, 100);
-        return Response.json({ stopped: true });
-      }
-      if (["SessionStart", "PostModelRequest", "Stop", "Interrupt"].includes(event.hook_event_name)) {
-        externalDirty = true;
-        publish();
-        if (event.hook_event_name === "PostModelRequest" && event.status === "failed" && /usage.?limit|usage_limit_reached|quota.{0,30}exceed/i.test(event.error ?? "")) {
-          const alreadyPending = Boolean(pending);
-          pending = { threadId: event.session_id, reason: "usageLimitExceeded" };
-          if (!autoSwitch && !resumeAfterReset && !alreadyPending)
-            openPanel();
-        }
-        if (autoSwitch || resumeAfterReset || event.hook_event_name === "SessionStart")
-          scheduleMonitor();
-        connect().catch(() => {});
-      }
-      return Response.json({});
+        return Response.json({});
+      });
     } });
   } catch (e) {
     web.stop(true);
@@ -1151,38 +1392,45 @@ async function serveNative() {
   if (resumeAfterReset)
     scheduleMonitor();
   const refreshTimer = setInterval(() => {
-    if (!active || switching)
+    if (authUncertain || lifecycle.closing || !active || operations.busy)
       return;
     if (!rpc || rpc.closed) {
       active = undefined;
       return;
     }
     const name = active;
-    switching = true;
-    (async () => {
+    operations.begin("refresh");
+    lifecycle.run(async () => {
       const unlock = await store.lock();
       try {
         const auth = identity(await store.auth(store.account(name)));
         if (auth.expires < Date.now() / 1000 + 180) {
+          const previousRaw = await store.auth(codexHome);
           const raw = await refresh(name);
           const fresh = identity(raw);
           if (fresh.accountId !== auth.accountId)
             throw new Error("Refresh mudou a identidade.");
           const client = await connect();
           await ensureIdle(client);
-          await client.call("account/login/start", { type: "chatgptAuthTokens", accessToken: fresh.accessToken, chatgptAccountId: fresh.accountId, chatgptPlanType: fresh.plan });
-          await store.saveAuth(codexHome, raw);
+          await applyLogin(client, raw, previousRaw);
         }
       } finally {
         await unlock();
       }
-    })().catch(() => {
-      lastMessage = "N\xE3o foi poss\xEDvel renovar o login. Cadastre novamente a conta pelo fluxo oficial.";
+    }).catch((error) => {
+      diagnostics.record("refresh", error);
+      lastMessage = authUncertain ? "Authentication outcome unknown. Use logout to reconcile the shared session." : "N\xE3o foi poss\xEDvel renovar o login. Cadastre novamente a conta pelo fluxo oficial.";
+      publish();
     }).finally(() => {
-      switching = false;
+      operations.end();
     });
   }, 60000);
-  async function close() {
+  let closing;
+  function close() {
+    return closing ??= shutdown();
+  }
+  async function shutdown() {
+    lifecycle.closing = true;
     if (monitorTimer)
       clearTimeout(monitorTimer);
     for (const listener of listeners) {
@@ -1193,11 +1441,12 @@ async function serveNative() {
     listeners.clear();
     clearInterval(resetTimer);
     clearInterval(refreshTimer);
+    await lifecycle.drain();
     ipc.stop(true);
     web.stop(true);
     await rpc?.close();
-    await rm2(endpointPath, { force: true });
-    await rm2(socketPath, { force: true });
+    await rm3(endpointPath, { force: true });
+    await rm3(socketPath, { force: true });
   }
   return { panelUrl, close };
 }

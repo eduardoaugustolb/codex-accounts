@@ -1,5 +1,12 @@
 import WebSocket from "ws";
 
+export class RpcError extends Error {
+  constructor(readonly kind: "rejected" | "outcomeUnknown" | "unavailable", readonly method: string) {
+    super(`RPC ${kind}: ${method}`);
+    this.name = "RpcError";
+  }
+}
+
 abstract class RpcPeer {
   private seq = 0;
   private pending = new Map<number, { resolve: (value: any) => void; reject: (e: Error) => void; method: string; timer: ReturnType<typeof setTimeout> }>();
@@ -8,16 +15,16 @@ abstract class RpcPeer {
   // native TUI (especially approvals), instead of racing it with an error.
   onRequest: (message: any) => Promise<unknown> = async () => undefined;
   protected disconnected() {
-      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error("Conexão com Codex encerrada.")); }
+      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new RpcError("outcomeUnknown", p.method)); }
       this.pending.clear();
   }
   abstract send(message: unknown): void;
   call(method: string, params: unknown = {}, timeout = 15000): Promise<any> {
     const id = ++this.seq;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Timeout RPC: ${method}`)); }, timeout);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new RpcError("outcomeUnknown", method)); }, timeout);
       this.pending.set(id, { resolve, reject, method, timer });
-      try { this.send({ id, method, params }); } catch { clearTimeout(timer); this.pending.delete(id); reject(new Error("Conexão com Codex indisponível.")); }
+      try { this.send({ id, method, params }); } catch { clearTimeout(timer); this.pending.delete(id); reject(new RpcError("unavailable", method)); }
     });
   }
   async initialize(experimental = false) {
@@ -32,7 +39,7 @@ abstract class RpcPeer {
       const p = this.pending.get(msg.id);
       if (!p) return;
       clearTimeout(p.timer); this.pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(`RPC rejeitada: ${p.method} (${msg.error.code}).`)); else p.resolve(msg.result);
+      if (msg.error) p.reject(new RpcError("rejected", p.method)); else p.resolve(msg.result);
     }
   }
 }

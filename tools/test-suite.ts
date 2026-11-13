@@ -5,6 +5,7 @@ const steps = [
   { name: "TypeScript", args: ["run", "check"] },
   { name: "Testes unitários", args: ["test"] },
   { name: "Build do plugin", args: ["run", "build"] },
+  { name: "Installed CLI/TUI command in isolated directories", args: ["tools/install-cli-case.ts"] },
   { name: "Terminal UI with isolated fake client", args: ["tools/tui-case.ts"] },
   { name: "Autenticação e histórico", args: ["tools/auth-hook-case.ts"] },
   { name: "CLI: troca manual, segurança, preferências e ciclo de vida", args: ["tools/native-cli-case.ts"] },

@@ -8,7 +8,7 @@ import { binary, codexHome, endpointPath, identity, socketPath } from "./native-
 async function main() {
   const [requestedCommand, name, flag] = process.argv.slice(2);
   const command = requestedCommand ?? (process.stdin.isTTY && process.stdout.isTTY ? "tui" : undefined);
-  const help = `Usage: bun run start <command>
+  const help = `Usage: codex-accounts <command>
   tui                            Open the interactive terminal account manager
   help, --help, -h                Show this help (also: <command> --help)
   add NAME [--device]             Register an account using official login
@@ -25,10 +25,11 @@ async function main() {
   install                        Install plugin and start official daemon
 
 Examples:
-  bun run start usage
-  bun run start usage work --json
-  bun run start switch personal
-  bun run start resume-after-reset on
+  codex-accounts
+  codex-accounts usage
+  codex-accounts usage work --json
+  codex-accounts switch personal
+  codex-accounts resume-after-reset on
 
 Usage shows remaining percentages and reset timestamps for 5h and weekly quotas.
 Switching waits for idle conversations; busy sessions return an error.
@@ -63,9 +64,11 @@ and checks for early/token resets every 30 seconds. Both quotas must have capaci
       if (!await state()) return;
       const result = await fetch("http://localhost/event", { unix: socketPath, method: "POST", body: JSON.stringify({ action: "shutdown" }), signal: AbortSignal.timeout(3000) });
       if (!result.ok) throw new Error("Backend não confirmou o encerramento.");
-      for (let i = 0; i < 60; i++) {
+      // Accepted backend jobs can include bounded daemon RPCs and helper shutdown.
+      const deadline = Date.now() + 120000;
+      while (Date.now() < deadline) {
         if (!await Bun.file(endpointPath).exists() && !await state()) return;
-        await Bun.sleep(50);
+        await Bun.sleep(100);
       }
       throw new Error("Backend ainda está encerrando. Tente novamente.");
     }

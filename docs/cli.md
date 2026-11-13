@@ -1,12 +1,24 @@
 # CLI and terminal interface
 
-Run commands from the project directory with **Bun**. No global installation or
-wrapper around `codex` is required. Keep using the official `codex` command to
-work on your conversations.
+Install the command with `./install.sh` (or `bun run install:cli`) after installing
+dependencies with `bun install --frozen-lockfile`. Then use `codex-accounts` from
+any directory. `bun run setup` installs the command and registers the plugin.
+Keep using the official `codex` command to work on your conversations.
+
+The command is installed in `~/.local/bin` by default. Add that directory to your
+shell's PATH if necessary; no shell alias or startup-file modification is needed.
+Use `./install.sh --help` for custom binary and data directories. Installation
+copies the built marketplace into a separate release directory, so moving the
+source checkout does not break the command. Reinstall after updating the source.
 
 ## Start here
 
 ```bash
+codex-accounts
+codex-accounts --help
+codex-accounts usage work --json
+codex-accounts switch personal
+# From the project checkout, these forms also work:
 bun run help
 bun run tui
 bun run usage
@@ -24,8 +36,9 @@ returns an error in scripts; use `usage --json` instead.
 
 ## Command reference
 
-The canonical form is `bun run start <command> [arguments]`. Commands also work
-with `bun src/native-cli.ts <command>`. Script shortcuts are shown where available.
+The installed form is `codex-accounts <command> [arguments]`. From the project
+checkout, commands also work with `bun run start <command>` or
+`bun src/native-cli.ts <command>`. Script shortcuts are shown where available.
 
 | Command | Shortcut | Purpose |
 | --- | --- | --- |
@@ -183,6 +196,8 @@ See [Automatic behavior and recovery](automation.md) for timing and eligibility.
 
 | Symptom | What to do |
 | --- | --- |
+| `codex-accounts` command not found | Run `./install.sh`, then add the reported binary directory to your shell PATH. |
+| Installer finds an unmanaged command | Choose another `--bin-dir`; the installer will not overwrite unrelated commands or symlinks. |
 | TUI requires an interactive terminal | Open it in a terminal; use `usage --json` for redirected input/output. |
 | Unknown command or invalid arguments | Run `bun run help`; include an account alias where required. |
 | Account not registered | Run `bun run start list`, then register the intended alias. |
@@ -192,7 +207,7 @@ See [Automatic behavior and recovery](automation.md) for timing and eligibility.
 | Panel link no longer works | Backend restarts rotate its private address; run `bun run panel`. |
 | Authentication refresh stopped after a backend restart | Select the saved account again after turns are idle to restore backend-owned refresh handling. |
 | Temporary daemon cannot be installed | Choose a short, writable `TMPDIR` with enough free space; integration tests install isolated daemons. |
-| Lock remains after a crash | Confirm no manager process owns the vault before removing a stale lock. Do not remove a live lock. |
+| Legacy directory lock detected | Stop all older clients and inspect the abandoned directory lock before removing it. Current SQLite locks release on process exit; never delete `mutation-lock.sqlite` while a client is running. |
 
 Treat `status` output and panel links as private. Do not paste authentication files,
 private panel URLs, or account emails into issues. Report vulnerabilities using
