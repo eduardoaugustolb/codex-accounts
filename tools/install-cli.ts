@@ -7,9 +7,11 @@ const marker = "# codex-accounts managed launcher";
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
 async function main() {
-  const args = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  const cliOnly = rawArgs.includes("--cli-only");
+  const args = rawArgs.filter(arg => arg !== "--cli-only");
   if (args.includes("--help") || args.includes("-h")) {
-    console.log("Usage: ./install.sh [--bin-dir PATH] [--data-dir PATH]\nInstall CLI and TUI without modifying shell configuration or starting Codex.\nDefaults: ~/.local/bin and $XDG_DATA_HOME/codex-accounts/cli (or ~/.local/share/codex-accounts/cli).");
+    console.log("Usage: ./install.sh [--cli-only] [--bin-dir PATH] [--data-dir PATH]\nInstall CLI, TUI, plugin, official daemon, and local backend. Use --cli-only for the manager command alone.\nDefaults: ~/.local/bin and $XDG_DATA_HOME/codex-accounts/cli (or ~/.local/share/codex-accounts/cli).");
     return;
   }
   let binDir = join(homedir(), ".local", "bin");
@@ -31,6 +33,8 @@ async function main() {
   if (existing && (!existing.isFile() || !(await readFile(target, "utf8")).startsWith(`#!/bin/sh\n${marker}\n`))) {
     throw new Error("An unmanaged codex-accounts command already exists in the target directory; choose another --bin-dir.");
   }
+  const dependencies = Bun.spawn([process.execPath, "install", "--frozen-lockfile"], { cwd: root, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
+  if (await dependencies.exited !== 0) throw new Error("Dependency installation failed.");
   const build = Bun.spawn([process.execPath, "run", "build"], { cwd: root, stdin: "ignore", stdout: "inherit", stderr: "inherit" });
   if (await build.exited !== 0) throw new Error("Build failed. Run bun install --frozen-lockfile and retry.");
 
@@ -52,6 +56,13 @@ async function main() {
   } finally {
     await rm(temporary, { force: true });
     if (!installed) await rm(release, { recursive: true, force: true });
+  }
+  if (!cliOnly) {
+    for (const command of ["install", "start"]) {
+      const child = Bun.spawn([target, command], { stdin: "inherit", stdout: command === "start" ? "ignore" : "inherit", stderr: "inherit" });
+      if (await child.exited !== 0) throw new Error(`Full installation failed during ${command}. The manager is installed; rerun ./install.sh to retry.`);
+    }
+    console.log("Plugin, official daemon, and local backend are ready. Review and trust all four hooks in Codex /hooks, then start a new conversation.");
   }
   console.log(`Installed: ${target}\nRun codex-accounts to open the TUI, or codex-accounts --help for CLI commands.`);
   const onPath = (process.env.PATH ?? "").split(delimiter).some(entry => resolve(entry) === binDir);

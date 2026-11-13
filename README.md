@@ -39,16 +39,17 @@ Setup builds the package into `marketplace/plugin/bin`, registers the local mark
 ### Install the CLI and TUI command
 
 `bun run setup` also installs the `codex-accounts` command in `~/.local/bin`.
-To install only the CLI and TUI from the project directory, run:
+To install the complete application from the project directory, run:
 
 ```bash
 bun install --frozen-lockfile
 ./install.sh
-# Equivalent: bun run install:cli
+# Equivalent: bun run setup
 ```
 
-This installs the manager command without registering the plugin or starting the
-daemon. For the complete plugin installation, use `bun run setup` above.
+Both `./install.sh` and `bun run setup` install dependencies, build and copy the CLI, TUI, backend and plugin, register the installed plugin with Codex, start the official daemon, and start the local backend. Review and trust all four hooks in Codex `/hooks` before starting a new conversation.
+
+For only the manager command, use `./install.sh --cli-only` or `bun run install:cli`.
 
 The installer copies the built marketplace into
 `${XDG_DATA_HOME:-$HOME/.local/share}/codex-accounts/cli/releases` and creates an
@@ -70,8 +71,7 @@ codex-accounts usage work --json
 codex-accounts switch personal
 ```
 
-Rerun `./install.sh` after updating the checkout, or use `bun run setup` to also
-update the plugin. The command name is a launcher for this manager; the official
+Rerun `./install.sh` or `bun run setup` after updating the checkout to update the complete application. The command name is a launcher for this manager; the official
 `codex` command is preserved.
 
 Open `codex`, enter `/hooks`, and review and trust **all four Codex Accounts hooks**. Then start a new conversation. Trust is tied to the plugin contents, so an update may require another review. Do not use `--dangerously-bypass-hook-trust`: this option disables daemon reuse in Codex 0.167.2.

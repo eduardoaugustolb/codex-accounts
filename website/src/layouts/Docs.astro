@@ -6,6 +6,7 @@ const { frontmatter } = Astro.props;
 const current = Astro.url.pathname;
 const index = pages.findIndex(p => p.href === current);
 const next = pages[index + 1];
+const previous = pages[index - 1];
 ---
 <!doctype html>
 <html lang="en" data-theme="dark">
@@ -27,7 +28,6 @@ const next = pages[index + 1];
     <nav class="primary" aria-label="Main navigation"><a href="/">Home</a><a class="selected" href="/" aria-current="page">Docs</a><a href="/cli/">CLI reference</a><a href="/architecture/">Developers</a></nav>
     <div class="tools"><button class="search-trigger" aria-label="Search documentation"><Icon name="magnifying-glass" /> <span>Search documentation</span><kbd>⌘ K</kbd></button><a class="github" href="https://github.com/eduardoaugustolb/codex-accounts">GitHub <Icon name="arrow-up-right" size={15} /></a><button class="theme" aria-label="Toggle color theme"><Icon name="sun" class="theme-sun" size={20} /><Icon name="moon" class="theme-moon" size={20} /></button><button class="menu" aria-label="Toggle navigation" aria-expanded="false"><Icon name="list" class="menu-open" size={22} /><Icon name="x" class="menu-close" size={22} /></button></div>
   </div>
-  <nav class="secondary" aria-label="Documentation categories"><a class:list={{active: index < 3}} href="/">Overview</a><a class:list={{active: index === 3}} href="/cli/">Interfaces</a><a class:list={{active: index === 4}} href="/automation/">Automation</a><a class:list={{active: index === 5}} href="/architecture/">Developers</a><a class:list={{active: index === 6}} href="/security/">Security</a></nav>
 </header>
 <div class="layout">
   <aside class="sidebar" aria-label="Documentation navigation">
@@ -38,7 +38,10 @@ const next = pages[index + 1];
   <main id="content">
     <div class="page-heading"><h1>{frontmatter.title}</h1><p>{frontmatter.description}</p></div>
     <article><slot /></article>
+    <nav class="page-pagination" aria-label="Page navigation">
+    {previous && <a class="next-page previous-page" href={previous.href}><Icon name="arrow-right" class="back-arrow" size={20} /><span>Previous<strong>{previous.title}</strong></span></a>}
     {next && <a class="next-page" href={next.href}><span>Up next<strong>{next.title}</strong></span><Icon name="arrow-right" size={20} /></a>}
+    </nav>
     <footer><span>Codex Accounts documentation</span><a href={`https://github.com/eduardoaugustolb/codex-accounts/tree/main/website/src/pages`}>Edit on GitHub <Icon name="arrow-up-right" size={13} /></a></footer>
   </main>
   <aside class="toc" aria-label="On this page"><nav id="toc-links"></nav><button id="copy-page"><Icon name="copy" size={13} /> Copy page</button><span id="copy-status" role="status"></span></aside>

@@ -1,7 +1,6 @@
 # CLI and terminal interface
 
-Install the command with `./install.sh` (or `bun run install:cli`) after installing
-dependencies with `bun install --frozen-lockfile`. Then use `codex-accounts` from
+Install the complete application with `./install.sh` or `bun run setup`. Both install dependencies, CLI, TUI, plugin, official daemon integration, and the local backend. Use `bun run install:cli` or `./install.sh --cli-only` only when you want the manager command alone. Then use `codex-accounts` from
 any directory. `bun run setup` installs the command and registers the plugin.
 Keep using the official `codex` command to work on your conversations.
 

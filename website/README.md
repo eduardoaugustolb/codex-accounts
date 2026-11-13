@@ -47,3 +47,5 @@ Interface icons use the regular-weight SVG assets from `@phosphor-icons/core` (M
 ## Brand asset
 
 `public/brand/codex-accounts-logo.png` is the generated Codex Accounts logo used in the documentation header, PNG favicon, and Apple touch icon. The header adapts it to the light theme through CSS. The original concept is retained alongside the selected asset.
+
+Documentation navigation uses one header bar and the sidebar. Previous/next links follow the order in `src/navigation.ts`; the first and last pages show only the available direction.

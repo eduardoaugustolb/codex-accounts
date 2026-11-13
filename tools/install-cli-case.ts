@@ -22,7 +22,7 @@ async function run(args: string[], expected = 0, cwd = temporary) {
 }
 
 try {
-  const install = ["sh", join(root, "install.sh"), "--bin-dir", bin, "--data-dir", data];
+  const install = ["sh", join(root, "install.sh"), "--cli-only", "--bin-dir", bin, "--data-dir", data];
   await run(install);
   if (!(await run([launcher, "--help"])).includes("Usage: codex-accounts")) throw new Error("Installed command did not show help");
   if (!(await run([launcher])).includes("Usage: codex-accounts")) throw new Error("Redirected invocation did not show help");
@@ -41,7 +41,21 @@ try {
   await run(["sh", join(root, "install.sh"), "--bin-dir", unmanaged, "--data-dir", data], 1);
   if (!(await readFile(unrelated, "utf8")).includes("unrelated")) throw new Error("Installer overwrote an unmanaged command");
 
-  await mkdir(service, { mode: 0o700 });
+  const fakeCodex = join(temporary, "fake-codex");
+  const calls = join(temporary, "install-calls.jsonl");
+  await writeFile(fakeCodex, '#!/usr/bin/env bun\nawait Bun.write(process.env.INSTALL_CALLS!, (await Bun.file(process.env.INSTALL_CALLS!).text().catch(() => "")) + JSON.stringify(process.argv.slice(2)) + "\\n");\n');
+  await chmod(fakeCodex, 0o755);
+  Object.assign(env, { CODEX_ACCOUNTS_CODEX: fakeCodex, INSTALL_CALLS: calls });
+  try {
+    await run(["sh", join(root, "install.sh"), "--bin-dir", bin, "--data-dir", data]);
+    const recorded = (await readFile(calls, "utf8")).trim().split("\n").map(line => JSON.parse(line));
+    if (recorded.length !== 3 || recorded[0].slice(0, 3).join(" ") !== "plugin marketplace add" || !recorded[0][3].startsWith(data) || recorded[1].join(" ") !== "plugin add codex-accounts@codex-accounts-local" || recorded[2].join(" ") !== "app-server daemon start") throw new Error("Full install did not register the installed plugin and start the daemon");
+    if (!(await run([launcher, "status"])).includes("http://")) throw new Error("Full install did not start the backend");
+  } finally {
+    await run([launcher, "stop"]);
+  }
+
+  await mkdir(service, { recursive: true, mode: 0o700 });
   const state = { accounts: [{ name: "fixture", current: true }], autoSwitch: false, autoContinue: false, resumeAfterReset: false };
   server = Bun.serve({ unix: join(service, "backend.sock"), fetch(request) {
     return Response.json(request.method === "GET" ? state : { accounts: state.accounts });
